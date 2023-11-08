@@ -58,8 +58,11 @@ mod unit_tests {
 
     use defmt::assert;
     use defmt::println;
+    use stm32f1xx_hal::flash::FlashExt;
     use stm32f1xx_hal::gpio::GpioExt;
     use stm32f1xx_hal::pac;
+    use stm32f1xx_hal::prelude::_stm32_hal_rcc_RccExt;
+    use stm32f1xx_hal::prelude::_stm32f4xx_hal_timer_SysCounterExt;
 
     #[test]
     fn test_init() {
@@ -67,6 +70,10 @@ mod unit_tests {
         let dp = pac::Peripherals::take().unwrap();
 
         let i2c2 = dp.I2C2;
+        let rcc = dp.RCC.constrain();
+        let mut flash = dp.FLASH.constrain();
+        let syst = cp.SYST;
+
         let mut gpiob = dp.GPIOB.split();
 
         // 初始化时钟

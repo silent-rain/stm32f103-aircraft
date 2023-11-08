@@ -17,3 +17,6 @@ panic-probe = {version = "0.3.1", features = ["print-defmt"]}
 nb = "1.1.0"
 # 6轴姿态传感器
 mpu6050 = "0.1.6"
+
+[dev-dependencies]
+defmt-test = "0.3.0"
