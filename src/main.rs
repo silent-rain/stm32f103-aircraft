@@ -2,20 +2,21 @@
 #![no_main]
 
 pub mod delay;
+pub mod sensor;
+
+use crate::sensor::mpu6050;
 
 use defmt::println;
 use defmt_rtt as _;
 use panic_probe as _;
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
-use mpu6050::Mpu6050;
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
     gpio::{self, Edge, ExtiPin, OutputSpeed},
-    i2c::{self, BlockingI2c},
     pac::{Interrupt, NVIC},
-    prelude::{_fugit_RateExtU32, _stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
+    prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
 
@@ -56,27 +57,16 @@ mod app {
         delay.delay_ms(1000_u16);
         println!("init start ...");
 
-        // MPU6050 初始化
+        // 初始化 MPU6050 引脚
         let mpu_scl = gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh);
         let mpu_sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
-        let pins = (mpu_scl, mpu_sda);
-        // 创建i2c实例
-        let i2c = BlockingI2c::i2c2(
-            i2c2,
-            pins,
-            i2c::Mode::standard(10.kHz()),
-            clocks,
-            1000,
-            10,
-            1000,
-            1000,
-        );
 
-        // 创建mpu6050实例，使用默认的从机地址和灵敏度
-        let mut mpu = Mpu6050::new(i2c);
+        // 初始化 MPU6050 传感器
+        let mut mpu = mpu6050::init(i2c2, (mpu_scl, mpu_sda), &mut delay, clocks);
 
-        // 初始化mpu6050
-        mpu.init(&mut delay).unwrap();
+        // 读取温度传感器的标度数据，单位为摄氏度
+        let temp = mpu.get_temp().unwrap();
+        println!("Temperature: {}°C", temp);
 
         // 获取加速度数据，单位为g
         let acc = mpu.get_acc().unwrap();
@@ -85,6 +75,20 @@ mod app {
         // 获取角速度数据，单位为弧度每秒
         let gyro = mpu.get_gyro().unwrap();
         println!("Gyro: ({}, {}, {})", gyro.x, gyro.y, gyro.z);
+
+        // 读取设备的姿态角，单位为度
+        let angles = mpu.get_acc_angles().unwrap();
+        let pitch = angles[0]; // 俯仰角
+        let roll = angles[1]; // 横滚角
+        println!("Pitch: {:?}, Roll: {:?}", pitch, roll);
+
+        // 获取当前加速度范围
+        let accel_range = mpu.get_accel_range().unwrap();
+        println!("accel_range: {:#?}", accel_range as u8);
+
+        // 获取当前陀螺仪范围
+        let gyro_range = mpu.get_gyro_range().unwrap();
+        println!("gyro_range: {:#?}", gyro_range as u8);
 
         // LED
         let mut led = gpioa.pa0.into_push_pull_output(&mut gpioa.crl);
