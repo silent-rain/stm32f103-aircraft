@@ -1,10 +1,7 @@
 #![no_std]
 #![no_main]
 
-pub mod delay;
-pub mod sensor;
-
-use crate::sensor::mpu6050;
+use stm32f103_uav::sensor::mpu6050;
 
 use defmt::println;
 use defmt_rtt as _;

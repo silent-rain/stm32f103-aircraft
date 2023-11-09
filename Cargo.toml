@@ -5,6 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+harness = false
+
 [dependencies]
 cortex-m = {version = "0.7.7", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.3"
@@ -19,4 +22,4 @@ nb = "1.1.0"
 mpu6050 = "0.1.6"
 
 [dev-dependencies]
-defmt-test = "0.3.0"
+defmt-test = "0.3.1"

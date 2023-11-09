@@ -51,11 +51,6 @@ where
 mod unit_tests {
     use super::*;
 
-    // use defmt_rtt as _; // global logger
-    // adjust HAL import
-    // use stm32f1xx_hal as _; // memory layout
-    // use panic_probe as _;
-
     use defmt::assert;
     use defmt::println;
     use stm32f1xx_hal::flash::FlashExt;
