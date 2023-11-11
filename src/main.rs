@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 
-use stm32f103_uav::oled;
-use stm32f103_uav::sensor::mpu6050;
+use stm32f103_uav::{
+    oled,
+    sensor::mpu6050::{self, Mpu6050},
+};
 
 use defmt::println;
 use defmt_rtt as _;
@@ -12,11 +14,23 @@ use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
-    gpio::{self, Edge, ExtiPin, OutputSpeed},
-    pac::{Interrupt, NVIC},
+    gpio::{self, Alternate, Edge, ExtiPin, OpenDrain, OutputSpeed, Pin},
+    i2c::BlockingI2c,
+    pac::{Interrupt, I2C2, NVIC},
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
+
+/// Mpu6050 对象别名
+type Mpu6050TY = Mpu6050<
+    BlockingI2c<
+        I2C2,
+        (
+            Pin<'B', 10, Alternate<OpenDrain>>,
+            Pin<'B', 11, Alternate<OpenDrain>>,
+        ),
+    >,
+>;
 
 // 定义应用程序资源和任务
 #[rtic::app(device = stm32f1xx_hal::pac, peripherals = true)]
@@ -24,13 +38,15 @@ mod app {
     use super::*;
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        delay: SysDelay,
+    }
 
     #[local]
     struct Local {
-        delay: SysDelay,
         button: gpio::PB1<gpio::Input<gpio::PullUp>>,
         led: gpio::PA0<gpio::Output<gpio::PushPull>>,
+        mpu6050: Mpu6050TY,
     }
 
     // 初始化函数
@@ -64,33 +80,25 @@ mod app {
         let mpu_sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
 
         // 初始化 MPU6050 传感器
-        let mut mpu = mpu6050::init(i2c2, (mpu_scl, mpu_sda), &mut delay, clocks);
+        let mut mpu6050 = mpu6050::init(i2c2, (mpu_scl, mpu_sda), &mut delay, clocks);
 
         // 读取温度传感器的标度数据，单位为摄氏度
-        let temp = mpu.get_temp().unwrap();
+        let temp = mpu6050.get_temp().unwrap();
         println!("Temperature: {}°C", temp);
 
         // 获取加速度数据，单位为g
-        let acc = mpu.get_acc().unwrap();
+        let acc = mpu6050.get_acc().unwrap();
         println!("Accel: ({}, {}, {})", acc.x, acc.y, acc.z);
 
         // 获取角速度数据，单位为弧度每秒
-        let gyro = mpu.get_gyro().unwrap();
+        let gyro = mpu6050.get_gyro().unwrap();
         println!("Gyro: ({}, {}, {})", gyro.x, gyro.y, gyro.z);
 
         // 读取设备的姿态角，单位为度
-        let angles = mpu.get_acc_angles().unwrap();
+        let angles = mpu6050.get_acc_angles().unwrap();
         let pitch = angles[0]; // 俯仰角
         let roll = angles[1]; // 横滚角
         println!("Pitch: {:?}, Roll: {:?}", pitch, roll);
-
-        // 获取当前加速度范围
-        let accel_range = mpu.get_accel_range().unwrap();
-        println!("accel_range: {:#?}", accel_range as u8);
-
-        // 获取当前陀螺仪范围
-        let gyro_range = mpu.get_gyro_range().unwrap();
-        println!("gyro_range: {:#?}", gyro_range as u8);
 
         // LED
         let mut led = gpioa.pa0.into_push_pull_output(&mut gpioa.crl);
@@ -113,26 +121,51 @@ mod app {
 
         oled.show_string(1, 1, "hallo");
         println!("init end ...");
-        // 初始化静态资源以稍后通过RTIC使用它们
-        (Shared {}, Local { button, led, delay })
+        (
+            Shared { delay },
+            Local {
+                button,
+                led,
+                mpu6050,
+            },
+        )
     }
 
-    // 中断处理函数
-    #[task(binds = EXTI1,priority = 1, local = [delay, button, led])]
+    /// 按钮触发 LED 灯
+    /// 中断处理函数
+    #[task(binds = EXTI1,priority = 1, local = [button, led])]
     fn button_click(ctx: button_click::Context) {
-        println!("button click ...");
         ctx.local.button.clear_interrupt_pending_bit();
         ctx.local.led.toggle();
     }
 
-    // Optional.
-    //
-    // https://rtic.rs/dev/book/en/by-example/app_idle.html
-    // > 当没有声明空闲功能时，运行时设置 SLEEPONEXIT 位，然后在运行 init 后将微控制器发送到睡眠状态。
-    #[idle]
-    fn idle(_cx: idle::Context) -> ! {
+    /// 任务处理
+    #[idle(local = [mpu6050], shared = [delay])]
+    fn idle(ctx: idle::Context) -> ! {
+        let mpu6050 = ctx.local.mpu6050;
+        let mut delay = ctx.shared.delay;
         loop {
-            cortex_m::asm::wfi();
+            // 读取温度传感器的标度数据，单位为摄氏度
+            let temp = mpu6050.get_temp().unwrap();
+            println!("Temperature: {}°C", temp);
+
+            // 获取加速度数据，单位为g
+            let acc = mpu6050.get_acc().unwrap();
+            println!("Accel: ({}, {}, {})", acc.x, acc.y, acc.z);
+
+            // 获取角速度数据，单位为弧度每秒
+            let gyro = mpu6050.get_gyro().unwrap();
+            println!("Gyro: ({}, {}, {})", gyro.x, gyro.y, gyro.z);
+
+            // 读取设备的姿态角，单位为度
+            let angles = mpu6050.get_acc_angles().unwrap();
+            let pitch = angles[0]; // 俯仰角
+            let roll = angles[1]; // 横滚角
+            println!("Pitch: {:?}, Roll: {:?}", pitch, roll);
+
+            delay.lock(|f| {
+                f.delay_ms(5000_u32);
+            })
         }
     }
 }

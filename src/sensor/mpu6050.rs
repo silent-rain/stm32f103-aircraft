@@ -6,7 +6,7 @@
 //!
 //! 这里主要用于初始化 MPU6050 传感器
 
-use mpu6050::Mpu6050;
+pub use mpu6050::Mpu6050;
 use stm32f1xx_hal::{
     i2c::{self, BlockingI2c, DutyCycle, Pins},
     pac::I2C2,
