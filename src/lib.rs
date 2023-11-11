@@ -10,3 +10,4 @@ use stm32f1xx_hal as _;
 
 pub mod delay;
 pub mod sensor;
+pub mod oled;
