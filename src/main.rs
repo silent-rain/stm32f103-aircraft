@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use stm32f103_uav::oled;
 use stm32f103_uav::sensor::mpu6050;
 
 use defmt::println;
@@ -54,6 +55,10 @@ mod app {
         delay.delay_ms(1000_u16);
         println!("init start ...");
 
+        // 初始化 OLED
+        let (mut scl, mut sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
+        let mut oled = oled::OLED::new(&mut scl, &mut sda);
+
         // 初始化 MPU6050 引脚
         let mpu_scl = gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh);
         let mpu_sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
@@ -106,6 +111,7 @@ mod app {
             nvic.set_priority(Interrupt::EXTI1, 1);
         }
 
+        oled.show_string(1, 1, "hallo");
         println!("init end ...");
         // 初始化静态资源以稍后通过RTIC使用它们
         (Shared {}, Local { button, led, delay })
