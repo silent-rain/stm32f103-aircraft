@@ -1,6 +1,6 @@
 //! 简单的 OLED 实例
 
-use stm32f1xx_hal::gpio::{self, OutputSpeed};
+use stm32f1xx_hal::gpio::{self, IOPinSpeed, OpenDrain, Output, OutputSpeed, PB8, PB9};
 
 /// 初始化 OLED 显示屏引脚
 /// pin: pb8、pb9
@@ -11,18 +11,19 @@ use stm32f1xx_hal::gpio::{self, OutputSpeed};
 /// oled.show_string(1, 1, "hallo");
 /// ```
 pub fn init_oled(
-    pb8: gpio::Pin<'B', 8>,
-    pb9: gpio::Pin<'B', 9>,
+    pb8: PB8,
+    pb9: PB9,
     crh: &mut gpio::Cr<'B', true>,
-) -> (
-    gpio::PB8<gpio::Output<gpio::OpenDrain>>,
-    gpio::PB9<gpio::Output<gpio::OpenDrain>>,
-) {
+) -> (PB8<Output<OpenDrain>>, PB9<Output<OpenDrain>>) {
     // 将引脚配置为作为开漏输出模式
+    // scl（时钟线）：用于同步数据传输，控制数据的传输速度和顺序。
+    // 在OLED显示屏中，scl 信号用于同步数据位的发送和接收。
+    // sda（数据线）：用于传输数据到OLED显示屏。
+    // 在OLED显示屏中，sda 信号用于传输每个像素的数据，包括颜色信息、亮度等。
     let mut scl = pb8.into_open_drain_output(crh);
     let mut sda = pb9.into_open_drain_output(crh);
-    scl.set_speed(crh, gpio::IOPinSpeed::Mhz50);
-    sda.set_speed(crh, gpio::IOPinSpeed::Mhz50);
+    scl.set_speed(crh, IOPinSpeed::Mhz50);
+    sda.set_speed(crh, IOPinSpeed::Mhz50);
 
     (scl, sda)
 }

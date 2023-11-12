@@ -1,10 +1,10 @@
 //! LED 灯
 
-use stm32f1xx_hal::gpio::{self, Output, OutputSpeed, Pin, PA0};
+use stm32f1xx_hal::gpio::{self, Output, OutputSpeed, PA4};
 
 /// 初始化 LED 灯
-pub fn init_led(pa0: PA0, crl: &mut gpio::Cr<'A', false>) -> Pin<'A', 0, Output> {
-    let mut led = pa0.into_push_pull_output(crl);
+pub fn init_led(pa4: PA4, crl: &mut gpio::Cr<'A', false>) -> PA4<Output> {
+    let mut led = pa4.into_push_pull_output(crl);
     led.set_speed(crl, gpio::IOPinSpeed::Mhz50);
     led
 }

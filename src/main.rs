@@ -18,7 +18,7 @@ use rtic_sync::{
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
-    gpio::{self, ExtiPin},
+    gpio::{self, ExtiPin, PA11, PA4},
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
@@ -35,8 +35,8 @@ mod app {
     #[shared]
     struct Shared {
         delay: SysDelay,
-        key: gpio::PB1<gpio::Input<gpio::PullUp>>,
-        led: gpio::PA0<gpio::Output<gpio::PushPull>>,
+        key: PA11<gpio::Input<gpio::PullUp>>,
+        led: PA4<gpio::Output<gpio::PushPull>>,
         oled: OLEDTY,
         mpu6050: Mpu6050TY,
     }
@@ -45,7 +45,6 @@ mod app {
     struct Local {
         mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
         nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-        // nrf24l01: NRF24L01TY,
         nrf24l01_rx: RxTY,
     }
 
@@ -78,9 +77,9 @@ mod app {
         let mut oled = oled::OLED::new(scl, sda);
 
         // 初始化按键 KEY
-        let key = key::init_key(gpiob.pb1, &mut gpiob.crl, &mut exti, &mut nvic, &mut afio);
+        let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
         // 初始化 LED 灯
-        let led = led::init_led(gpioa.pa0, &mut gpioa.crl);
+        let led = led::init_led(gpioa.pa4, &mut gpioa.crl);
         // 初始化 MPU6050 传感器
         let mpu6050 = mpu6050::init(
             gpiob.pb10,
@@ -96,8 +95,9 @@ mod app {
             pa6: gpioa.pa6,
             pa7: gpioa.pa7,
             gpioa_crl: &mut gpioa.crl,
-            pa3: gpioa.pa3,
-            pa4: gpioa.pa4,
+            pa8: gpioa.pa8,
+            pa9: gpioa.pa9,
+            gpioa_crh: &mut gpioa.crh,
             spi1,
             mapr: &mut afio.mapr,
             clocks,

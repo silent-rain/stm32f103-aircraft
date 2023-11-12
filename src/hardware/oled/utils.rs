@@ -2,10 +2,12 @@
 use super::font::OLED_FONT;
 
 use embedded_hal::digital::v2::OutputPin;
-use stm32f1xx_hal::gpio::{OpenDrain, Output, Pin};
+use stm32f1xx_hal::gpio::{OpenDrain, Output, PB8, PB9};
 
 /// OLEDTY 对象别名
-pub type OLEDTY = OLED<Pin<'B', 8, Output<OpenDrain>>, Pin<'B', 9, Output<OpenDrain>>>;
+pub type OLEDTY = OLED<PB8<Output<OpenDrain>>, PB9<Output<OpenDrain>>>;
+
+// PB8<Output<OpenDrain>>
 
 pub struct OLED<Scl, Sda>
 where

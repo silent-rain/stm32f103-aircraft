@@ -1,20 +1,20 @@
 //! 按键
 use stm32f1xx_hal::{
     afio::{self},
-    gpio::{self, Edge, ExtiPin, Input, Pin, PullUp, PB1},
+    gpio::{self, Edge, ExtiPin, Input, PullUp, PA11},
     pac::{Interrupt, EXTI, NVIC},
 };
 
 /// 初始化按键 KEY
 pub fn init_key(
-    pb1: PB1,
-    crl: &mut gpio::Cr<'B', false>,
+    pa11: PA11,
+    crh: &mut gpio::Cr<'A', true>,
     exti: &mut EXTI,
     nvic: &mut NVIC,
     afio: &mut afio::Parts,
-) -> Pin<'B', 1, Input<PullUp>> {
+) -> PA11<Input<PullUp>> {
     // KEY
-    let mut key = pb1.into_pull_up_input(crl);
+    let mut key = pa11.into_pull_up_input(crh);
     // 配置 AFIO 外部中断引脚选择
     key.make_interrupt_source(afio);
     // 从该引脚启用外部中断

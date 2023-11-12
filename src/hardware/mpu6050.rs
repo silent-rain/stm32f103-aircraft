@@ -8,7 +8,7 @@
 
 pub use mpu6050::Mpu6050;
 use stm32f1xx_hal::{
-    gpio::{self, Alternate, OpenDrain, Pin, PB10, PB11},
+    gpio::{self, Alternate, OpenDrain, PB10, PB11},
     i2c::{self, BlockingI2c, DutyCycle},
     pac::I2C2,
     prelude::_fugit_RateExtU32,
@@ -17,15 +17,8 @@ use stm32f1xx_hal::{
 };
 
 /// Mpu6050 对象别名
-pub type Mpu6050TY = Mpu6050<
-    BlockingI2c<
-        I2C2,
-        (
-            Pin<'B', 10, Alternate<OpenDrain>>,
-            Pin<'B', 11, Alternate<OpenDrain>>,
-        ),
-    >,
->;
+pub type Mpu6050TY =
+    Mpu6050<BlockingI2c<I2C2, (PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>)>>;
 
 /// Mpu6050 传感器数据集
 #[derive(Debug)]
@@ -58,13 +51,18 @@ pub fn init(
 where
 {
     // 初始化 MPU6050 引脚
-    let mpu_scl = pb10.into_alternate_open_drain(crh);
-    let mpu_sda = pb11.into_alternate_open_drain(crh);
+    // scl（时钟线）：用于同步数据传输，控制数据的传输速度和顺序。
+    // 在 MPU6050 中，scl 信号用于同步数据位的发送和接收。
+    // sda（数据线）：用于传输数据到 MPU6050。
+    // 在 MPU6050 中，sda 信号用于传输每个寄存器的数据，
+    // 包括加速度计、陀螺仪等传感器的数据。
+    let scl = pb10.into_alternate_open_drain(crh);
+    let sda = pb11.into_alternate_open_drain(crh);
 
     // 创建i2c实例
     let i2c = BlockingI2c::i2c2(
         i2c2,
-        (mpu_scl, mpu_sda),
+        (scl, sda),
         i2c::Mode::fast(10.kHz(), DutyCycle::Ratio2to1),
         clocks,
         1000,
