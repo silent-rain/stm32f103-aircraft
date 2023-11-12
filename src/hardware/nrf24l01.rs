@@ -4,7 +4,7 @@ use core::convert::Infallible;
 
 use heapless::String;
 
-use embedded_nrf24l01::{Configuration, CrcMode, DataRate, Payload, StandbyMode, NRF24L01};
+use embedded_nrf24l01::{Configuration, CrcMode, DataRate, Payload, RxMode, StandbyMode, NRF24L01};
 use stm32f1xx_hal::{
     afio::MAPR,
     gpio::{self, Alternate, Input, OpenDrain, Output, Pin, PullUp, PA3, PA4, PA5, PA6, PA7},
@@ -33,7 +33,27 @@ pub type NRF24L01TY = StandbyMode<
     >,
 >;
 
+/// RxTY 对象别名
+pub type RxTY = RxMode<
+    NRF24L01<
+        Infallible,
+        Pin<'A', 3, Output<OpenDrain>>,
+        Pin<'A', 4, Output<OpenDrain>>,
+        Spi<
+            SPI1,
+            Spi1NoRemap,
+            (
+                Pin<'A', 5, Alternate>,
+                Pin<'A', 6, Input<PullUp>>,
+                Pin<'A', 7, Alternate>,
+            ),
+            u8,
+        >,
+    >,
+>;
+
 /// NRF24L01 传输指令
+#[derive(Debug)]
 pub struct NRF24L01Cmd {
     pub cmd: i32,
 }

@@ -5,11 +5,11 @@
 use stm32f103_uav::hardware::{
     key, led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
-    nrf24l01::{self, NRF24L01Cmd, NRF24L01TY},
+    nrf24l01::{self, NRF24L01Cmd, RxTY},
     oled::{self, OLEDTY},
 };
 
-use cortex_m::{asm::wfi, prelude::_embedded_hal_blocking_delay_DelayMs};
+use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
 use defmt::println;
 use rtic_sync::{
     channel::{Receiver, Sender},
@@ -28,7 +28,7 @@ const MPU6050_CAPACITY: usize = 1;
 const NRF24L01_CAPACITY: usize = 1;
 
 // 定义应用程序资源和任务
-#[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [USART1])]
+#[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [EXTI2,EXTI3])]
 mod app {
     use super::*;
 
@@ -42,7 +42,12 @@ mod app {
     }
 
     #[local]
-    struct Local {}
+    struct Local {
+        mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
+        nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+        // nrf24l01: NRF24L01TY,
+        nrf24l01_rx: RxTY,
+    }
 
     // 初始化函数
     #[init]
@@ -97,16 +102,15 @@ mod app {
             mapr: &mut afio.mapr,
             clocks,
         });
+        let nrf24l01_rx = nrf24l01.rx().unwrap();
 
         // MPU6050 传感器传递
         let (mpu6050_s, mpu6050_r) = make_channel!(Mpu6050Data, MPU6050_CAPACITY);
         mpu6050_receiver::spawn(mpu6050_r).unwrap();
-        mpu6050_sender::spawn(mpu6050_s.clone()).unwrap();
 
         // NRF24L01 数据传递
         let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
         nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
-        nrf24l01_sender::spawn(nrf24l01, nrf24l01_s).unwrap();
 
         oled.show_string(1, 1, "hallo");
         println!("init end ...");
@@ -118,56 +122,54 @@ mod app {
                 oled,
                 mpu6050,
             },
-            Local {},
+            Local {
+                mpu6050_s: mpu6050_s.clone(),
+                nrf24l01_s: nrf24l01_s.clone(),
+                nrf24l01_rx,
+            },
         )
     }
 
     /// 发送 MPU6050 传感器数据
-    #[task(priority = 1, shared=[mpu6050,delay])]
+    #[task(priority = 2, shared=[mpu6050,delay])]
     async fn mpu6050_sender(
         mut ctx: mpu6050_sender::Context,
         mut sender: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
     ) {
-        loop {
-            let data = ctx.shared.mpu6050.lock(|mpu6050| {
-                // 读取温度传感器的标度数据，单位为摄氏度
-                let temperature = mpu6050.get_temp().unwrap();
+        let data = ctx.shared.mpu6050.lock(|mpu6050| {
+            // 读取温度传感器的标度数据，单位为摄氏度
+            let temperature = mpu6050.get_temp().unwrap();
 
-                // 获取加速度数据，单位为g
-                let accel = mpu6050.get_acc().unwrap();
+            // 获取加速度数据，单位为g
+            let accel = mpu6050.get_acc().unwrap();
 
-                // 获取角速度数据，单位为弧度每秒
-                let gyro = mpu6050.get_gyro().unwrap();
+            // 获取角速度数据，单位为弧度每秒
+            let gyro = mpu6050.get_gyro().unwrap();
 
-                // 读取设备的姿态角，单位为度
-                let angles = mpu6050.get_acc_angles().unwrap();
-                // 俯仰角
-                let pitch = angles[0];
-                // 横滚角
-                let roll = angles[1];
+            // 读取设备的姿态角，单位为度
+            let angles = mpu6050.get_acc_angles().unwrap();
+            // 俯仰角
+            let pitch = angles[0];
+            // 横滚角
+            let roll = angles[1];
 
-                Mpu6050Data {
-                    temperature,
-                    accel_x: accel.x,
-                    accel_y: accel.y,
-                    accel_z: accel.z,
-                    gyro_x: gyro.x,
-                    gyro_y: gyro.y,
-                    gyro_z: gyro.z,
-                    pitch,
-                    roll,
-                }
-            });
-            sender.send(data).await.unwrap();
-
-            ctx.shared.delay.lock(|delay| {
-                delay.delay_ms(1000_u16);
-            });
-        }
+            Mpu6050Data {
+                temperature,
+                accel_x: accel.x,
+                accel_y: accel.y,
+                accel_z: accel.z,
+                gyro_x: gyro.x,
+                gyro_y: gyro.y,
+                gyro_z: gyro.z,
+                pitch,
+                roll,
+            }
+        });
+        sender.send(data).await.unwrap();
     }
 
     /// 接收 MPU6050 通道数据
-    #[task(priority = 1)]
+    #[task(priority = 2)]
     async fn mpu6050_receiver(
         _c: mpu6050_receiver::Context,
         mut receiver: Receiver<'static, Mpu6050Data, MPU6050_CAPACITY>,
@@ -189,28 +191,32 @@ mod app {
     }
 
     /// 将 NRF24L01 无线通信数据转发内部通道
-    #[task(priority = 1, local=[])]
+    #[task(priority = 2, local=[nrf24l01_rx], shared=[delay])]
     async fn nrf24l01_sender(
-        _ctx: nrf24l01_sender::Context,
-        nrf24l01: NRF24L01TY,
-        mut _receiver: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+        mut ctx: nrf24l01_sender::Context,
+        mut sender: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
     ) {
-        let mut rx = nrf24l01.rx().unwrap();
-        loop {
-            // 检查是否有数据可读
-            if rx.can_read().unwrap().is_none() {
-                continue;
-            }
-            // 读取数据到缓冲区
-            let payload = rx.read().unwrap();
-            let data = nrf24l01::payload_string(payload);
-            let data_str = data.as_str();
-            println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
+        println!("wait nrf24l01 signal...");
+        let rx = ctx.local.nrf24l01_rx;
+        // 检查是否有数据可读
+        if rx.can_read().unwrap().is_none() {
+            ctx.shared.delay.lock(|delay| {
+                delay.delay_ms(1000_u16);
+            });
+            return;
         }
+        // 读取数据到缓冲区
+        let payload = rx.read().unwrap();
+        let data = nrf24l01::payload_string(payload);
+        let data_str = data.as_str();
+        println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
+
+        // todo: 待完善具体接收指令，可考虑cmd使用枚举 cmd&data
+        sender.send(NRF24L01Cmd { cmd: 1 }).await.unwrap();
     }
 
     /// 接收 NRF24L01 通道数据
-    #[task(priority = 1)]
+    #[task(priority = 2)]
     async fn nrf24l01_receiver(
         _c: nrf24l01_receiver::Context,
         mut receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
@@ -221,7 +227,7 @@ mod app {
     }
 
     /// 按钮中断事件触发 LED 灯
-    #[task(binds = EXTI1,priority = 1, local = [],shared=[key,led])]
+    #[task(binds = EXTI1, local = [],shared=[key,led])]
     fn key_click(ctx: key_click::Context) {
         let key = ctx.shared.key;
         let led = ctx.shared.led;
@@ -232,10 +238,15 @@ mod app {
     }
 
     /// 任务处理
-    #[idle(local = [], shared = [])]
-    fn idle(_ctx: idle::Context) -> ! {
+    #[idle(local = [mpu6050_s,nrf24l01_s], shared = [delay])]
+    fn idle(mut ctx: idle::Context) -> ! {
         loop {
-            wfi();
+            mpu6050_sender::spawn(ctx.local.mpu6050_s.clone()).unwrap();
+            nrf24l01_sender::spawn(ctx.local.nrf24l01_s.clone()).unwrap();
+            println!("=======================");
+            ctx.shared.delay.lock(|delay| {
+                delay.delay_ms(1000_u16);
+            });
         }
     }
 }
