@@ -8,27 +8,63 @@
 
 pub use mpu6050::Mpu6050;
 use stm32f1xx_hal::{
-    i2c::{self, BlockingI2c, DutyCycle, Pins},
+    gpio::{self, Alternate, OpenDrain, Pin, PB10, PB11},
+    i2c::{self, BlockingI2c, DutyCycle},
     pac::I2C2,
     prelude::_fugit_RateExtU32,
     rcc::Clocks,
     timer::SysDelay,
 };
 
+/// Mpu6050 对象别名
+pub type Mpu6050TY = Mpu6050<
+    BlockingI2c<
+        I2C2,
+        (
+            Pin<'B', 10, Alternate<OpenDrain>>,
+            Pin<'B', 11, Alternate<OpenDrain>>,
+        ),
+    >,
+>;
+
+/// Mpu6050 传感器数据集
+#[derive(Debug)]
+pub struct Mpu6050Data {
+    /// 温度传感器的标度数据，单位为摄氏度
+    pub temperature: f32,
+    /// 加速度数据，单位为g
+    pub accel_x: f32,
+    pub accel_y: f32,
+    pub accel_z: f32,
+    /// 角速度数据，单位为弧度每秒
+    pub gyro_x: f32,
+    pub gyro_y: f32,
+    pub gyro_z: f32,
+    /// 俯仰角
+    pub pitch: f32,
+    /// 横滚角
+    pub roll: f32,
+}
+
 /// 初始化 MPU6050 传感器
-pub fn init<PINS>(
+pub fn init(
+    pb10: PB10,
+    pb11: PB11,
+    crh: &mut gpio::Cr<'B', true>,
     i2c2: I2C2,
-    pins: PINS,
     delay: &mut SysDelay,
     clocks: Clocks,
-) -> Mpu6050<BlockingI2c<I2C2, PINS>>
+) -> Mpu6050TY
 where
-    PINS: Pins<I2C2>,
 {
+    // 初始化 MPU6050 引脚
+    let mpu_scl = pb10.into_alternate_open_drain(crh);
+    let mpu_sda = pb11.into_alternate_open_drain(crh);
+
     // 创建i2c实例
     let i2c = BlockingI2c::i2c2(
         i2c2,
-        pins,
+        (mpu_scl, mpu_sda),
         i2c::Mode::fast(10.kHz(), DutyCycle::Ratio2to1),
         clocks,
         1000,
@@ -76,13 +112,15 @@ mod unit_tests {
         // 具有自定义精度的阻塞延迟
         let mut delay = syst.delay(&clocks);
 
-        // 初始化 MPU6050 引脚
-        let mpu_scl = gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh);
-        let mpu_sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
-        let pins = (mpu_scl, mpu_sda);
-
         // 初始化 MPU6050 传感器
-        let mut mpu = init(i2c2, pins, &mut delay, clocks);
+        let mut mpu = init(
+            gpiob.pb10,
+            gpiob.pb11,
+            &mut gpiob.crh,
+            i2c2,
+            &mut delay,
+            clocks,
+        );
 
         // 读取温度传感器的标度数据，单位为摄氏度
         let temp = mpu.get_temp().unwrap();

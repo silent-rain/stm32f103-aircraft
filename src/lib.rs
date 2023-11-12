@@ -8,6 +8,4 @@ use panic_probe as _;
 // memory layout
 use stm32f1xx_hal as _;
 
-pub mod delay;
-pub mod sensor;
-pub mod oled;
+pub mod hardware;

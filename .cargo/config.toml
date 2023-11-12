@@ -18,3 +18,5 @@ rustflags = [
 
 [build]
 target = "thumbv7m-none-eabi"
+# 加快编译速度 +nightly
+rustflags = ["-Z", "threads=8"]

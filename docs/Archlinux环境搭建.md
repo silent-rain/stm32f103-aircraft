@@ -3,9 +3,9 @@
 ## 系统环境
 
 - 系统版本: Archlinux
-- Rust 版本: 1.71.0
-- Cargo 版本: 1.71.0
-- Rustup 版本: 1.26.0
+- Rust 版本: 1.73.0
+- Cargo 版本: 1.73.0
+- Rustup 版本: 1.75.0-nightly
 
 ## 安装工具链
 
