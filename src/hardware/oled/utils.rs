@@ -2,17 +2,21 @@
 use super::font::OLED_FONT;
 
 use embedded_hal::digital::v2::OutputPin;
+use stm32f1xx_hal::gpio::{OpenDrain, Output, Pin};
 
-pub struct OLED<'a, Scl, Sda>
+/// OLEDTY 对象别名
+pub type OLEDTY = OLED<Pin<'B', 8, Output<OpenDrain>>, Pin<'B', 9, Output<OpenDrain>>>;
+
+pub struct OLED<Scl, Sda>
 where
     Scl: OutputPin,
     Sda: OutputPin,
 {
-    scl: &'a mut Scl,
-    sda: &'a mut Sda,
+    scl: Scl,
+    sda: Sda,
 }
 
-impl<'a, Scl, Sda> OLED<'a, Scl, Sda>
+impl<Scl, Sda> OLED<Scl, Sda>
 where
     Scl: OutputPin,
     Sda: OutputPin,
@@ -20,7 +24,7 @@ where
     /// 初始化 OLED 配置
     /// 注意需要提前进行端口初始化
     /// 注意上电延时
-    pub fn new(scl: &'a mut Scl, sda: &'a mut Sda) -> Self {
+    pub fn new(scl: Scl, sda: Sda) -> Self {
         let mut oled = OLED { scl, sda };
         oled.init();
         oled
@@ -125,7 +129,7 @@ where
     }
 }
 
-impl<'a, Scl, Sda> OLED<'a, Scl, Sda>
+impl<Scl, Sda> OLED<Scl, Sda>
 where
     Scl: OutputPin,
     Sda: OutputPin,

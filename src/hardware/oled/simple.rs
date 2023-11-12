@@ -6,8 +6,8 @@ use stm32f1xx_hal::gpio::{self, OutputSpeed};
 /// pin: pb8、pb9
 /// ```rust
 /// use oled;
-/// let (mut scl, mut sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
-/// let mut oled = oled::OLED::new(&mut scl, &mut sda);
+/// let (scl, sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
+/// let mut oled = oled::OLED::new(scl, sda);
 /// oled.show_string(1, 1, "hallo");
 /// ```
 pub fn init_oled(

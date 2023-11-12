@@ -5,6 +5,7 @@
 use stm32f103_uav::hardware::{
     key, led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
+    oled::{self, OLEDTY},
 };
 
 use cortex_m::{asm::wfi, prelude::_embedded_hal_blocking_delay_DelayMs};
@@ -35,6 +36,7 @@ mod app {
         delay: SysDelay,
         key: gpio::PB1<gpio::Input<gpio::PullUp>>,
         led: gpio::PA0<gpio::Output<gpio::PushPull>>,
+        oled: OLEDTY,
         mpu6050: Mpu6050TY,
     }
 
@@ -65,6 +67,9 @@ mod app {
         delay.delay_ms(1000_u16);
         println!("init start ...");
 
+        let (scl, sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
+        let mut oled = oled::OLED::new(scl, sda);
+
         // 初始化 OLED 显示屏
         // let oled = init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
         // 初始化按键 KEY
@@ -86,13 +91,14 @@ mod app {
         mpu6050_receiver::spawn(mpu6050_r).unwrap();
         mpu6050_sender::spawn(mpu6050_s.clone()).unwrap();
 
-        // oled.show_string(1, 1, "hallo");
+        oled.show_string(1, 1, "hallo");
         println!("init end ...");
         (
             Shared {
                 delay,
                 key,
                 led,
+                oled,
                 mpu6050,
             },
             Local {},
