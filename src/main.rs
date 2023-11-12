@@ -7,6 +7,7 @@ use stm32f103_uav::hardware::{
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
     oled::{self, OLEDTY},
+    tb6612fng,
 };
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
@@ -58,6 +59,7 @@ mod app {
         let i2c2 = ctx.device.I2C2;
         let mut exti = ctx.device.EXTI;
         let spi1 = ctx.device.SPI1;
+        let tim2 = ctx.device.TIM2;
 
         let syst = ctx.core.SYST;
         let mut nvic = ctx.core.NVIC;
@@ -103,6 +105,18 @@ mod app {
             clocks,
         });
         let nrf24l01_rx = nrf24l01.rx().unwrap();
+        // 初始化 TB6612FNG 电机驱动
+        let tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
+            tim2,
+            mapr: &mut afio.mapr,
+            clocks: &clocks,
+            pa0: gpioa.pa0,
+            pa1: gpioa.pa1,
+            pa2: gpioa.pa2,
+            pa3: gpioa.pa3,
+            gpioa_crl: &mut gpioa.crl,
+        });
+        // tb6612fng.set_duty(channel, speed);
 
         // MPU6050 传感器传递
         let (mpu6050_s, mpu6050_r) = make_channel!(Mpu6050Data, MPU6050_CAPACITY);
