@@ -41,10 +41,10 @@ pub struct Mpu6050Data {
 
 /// 初始化 MPU6050 传感器
 pub fn init(
+    i2c2: I2C2,
     pb10: PB10,
     pb11: PB11,
     crh: &mut gpio::Cr<'B', true>,
-    i2c2: I2C2,
     delay: &mut SysDelay,
     clocks: Clocks,
 ) -> Mpu6050TY

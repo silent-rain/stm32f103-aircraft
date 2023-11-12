@@ -82,10 +82,10 @@ mod app {
         let led = led::init_led(gpioa.pa4, &mut gpioa.crl);
         // 初始化 MPU6050 传感器
         let mpu6050 = mpu6050::init(
+            i2c2,
             gpiob.pb10,
             gpiob.pb11,
             &mut gpiob.crh,
-            i2c2,
             &mut delay,
             clocks,
         );
