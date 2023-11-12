@@ -34,7 +34,9 @@ pub type NRF24L01TY = StandbyMode<
 >;
 
 /// NRF24L01 传输指令
-pub struct NRF24L01Cmd {}
+pub struct NRF24L01Cmd {
+    pub cmd: i32,
+}
 
 /// 配置参数
 pub struct Config<'a> {

@@ -104,8 +104,9 @@ mod app {
         mpu6050_sender::spawn(mpu6050_s.clone()).unwrap();
 
         // NRF24L01 数据传递
-        let (_nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
-        nrf24l01_receiver::spawn(nrf24l01, nrf24l01_r).unwrap();
+        let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
+        nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
+        nrf24l01_sender::spawn(nrf24l01, nrf24l01_s).unwrap();
 
         oled.show_string(1, 1, "hallo");
         println!("init end ...");
@@ -165,7 +166,7 @@ mod app {
         }
     }
 
-    /// 接收 MPU6050 传感器数据
+    /// 接收 MPU6050 通道数据
     #[task(priority = 1)]
     async fn mpu6050_receiver(
         _c: mpu6050_receiver::Context,
@@ -187,13 +188,12 @@ mod app {
         }
     }
 
-    /// 接收 NRF24L01 2.4 GHz 无线通信数据
-    /// 转发内部通道
+    /// 将 NRF24L01 无线通信数据转发内部通道
     #[task(priority = 1, local=[])]
-    async fn nrf24l01_receiver(
-        _ctx: nrf24l01_receiver::Context,
+    async fn nrf24l01_sender(
+        _ctx: nrf24l01_sender::Context,
         nrf24l01: NRF24L01TY,
-        mut _receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+        mut _receiver: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
     ) {
         let mut rx = nrf24l01.rx().unwrap();
         loop {
@@ -206,6 +206,17 @@ mod app {
             let data = nrf24l01::payload_string(payload);
             let data_str = data.as_str();
             println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
+        }
+    }
+
+    /// 接收 NRF24L01 通道数据
+    #[task(priority = 1)]
+    async fn nrf24l01_receiver(
+        _c: nrf24l01_receiver::Context,
+        mut receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+    ) {
+        while let Ok(val) = receiver.recv().await {
+            println!("nrf24l01_receiver: {:?}", val.cmd);
         }
     }
 
