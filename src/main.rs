@@ -5,6 +5,7 @@
 use stm32f103_uav::hardware::{
     key, led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
+    nrf24l01::{self, NRF24L01Cmd, NRF24L01TY},
     oled::{self, OLEDTY},
 };
 
@@ -14,17 +15,17 @@ use rtic_sync::{
     channel::{Receiver, Sender},
     make_channel,
 };
-use stm32f1xx_hal::timer::SysDelay;
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
     gpio::{self, ExtiPin},
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
-    timer::SysTimerExt,
+    timer::{SysDelay, SysTimerExt},
 };
 
-// MPU6050 消息通道
+// 消息通道容量
 const MPU6050_CAPACITY: usize = 1;
+const NRF24L01_CAPACITY: usize = 1;
 
 // 定义应用程序资源和任务
 #[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [USART1])]
@@ -52,6 +53,7 @@ mod app {
         let rcc = ctx.device.RCC.constrain();
         let i2c2 = ctx.device.I2C2;
         let mut exti = ctx.device.EXTI;
+        let spi1 = ctx.device.SPI1;
 
         let syst = ctx.core.SYST;
         let mut nvic = ctx.core.NVIC;
@@ -83,11 +85,27 @@ mod app {
             &mut delay,
             clocks,
         );
+        // 初始化 NRF24L01 2.4 GHz 无线通信
+        let nrf24l01 = nrf24l01::init(nrf24l01::Config {
+            pa5: gpioa.pa5,
+            pa6: gpioa.pa6,
+            pa7: gpioa.pa7,
+            gpioa_crl: &mut gpioa.crl,
+            pa3: gpioa.pa3,
+            pa4: gpioa.pa4,
+            spi1,
+            mapr: &mut afio.mapr,
+            clocks,
+        });
 
         // MPU6050 传感器传递
         let (mpu6050_s, mpu6050_r) = make_channel!(Mpu6050Data, MPU6050_CAPACITY);
         mpu6050_receiver::spawn(mpu6050_r).unwrap();
         mpu6050_sender::spawn(mpu6050_s.clone()).unwrap();
+
+        // NRF24L01 数据传递
+        let (_nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
+        nrf24l01_receiver::spawn(nrf24l01, nrf24l01_r).unwrap();
 
         oled.show_string(1, 1, "hallo");
         println!("init end ...");
@@ -166,6 +184,28 @@ mod app {
                 val.pitch,
                 val.roll,
             );
+        }
+    }
+
+    /// 接收 NRF24L01 2.4 GHz 无线通信数据
+    /// 转发内部通道
+    #[task(priority = 1, local=[])]
+    async fn nrf24l01_receiver(
+        _ctx: nrf24l01_receiver::Context,
+        nrf24l01: NRF24L01TY,
+        mut _receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+    ) {
+        let mut rx = nrf24l01.rx().unwrap();
+        loop {
+            // 检查是否有数据可读
+            if rx.can_read().unwrap().is_none() {
+                continue;
+            }
+            // 读取数据到缓冲区
+            let payload = rx.read().unwrap();
+            let data = nrf24l01::payload_string(payload);
+            let data_str = data.as_str();
+            println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
         }
     }
 
