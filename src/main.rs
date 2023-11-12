@@ -6,7 +6,7 @@ use stm32f103_uav::hardware::{
     key, led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
-    oled::{self, OLEDTY},
+    oled::{self, simple::OLEDTY},
     tb6612fng,
 };
 
@@ -75,8 +75,8 @@ mod app {
         delay.delay_ms(1000_u16);
         println!("init start ...");
 
-        let (scl, sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
-        let mut oled = oled::OLED::new(scl, sda);
+        // 初始化 OLED 显示屏
+        let mut oled = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
 
         // 初始化按键 KEY
         let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
