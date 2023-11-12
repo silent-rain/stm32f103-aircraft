@@ -22,6 +22,8 @@ panic-probe = {version = "0.3.1", features = ["print-defmt"]}
 nb = "1.1.0"
 # 6轴姿态传感器
 mpu6050 = "0.1.6"
+# SPI - 2.4 GHz 无线通信
+embedded-nrf24l01 = "0.2.0"
 
 [dev-dependencies]
 defmt-test = "0.3.1"

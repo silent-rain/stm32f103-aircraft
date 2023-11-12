@@ -70,8 +70,6 @@ mod app {
         let (scl, sda) = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
         let mut oled = oled::OLED::new(scl, sda);
 
-        // 初始化 OLED 显示屏
-        // let oled = init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
         // 初始化按键 KEY
         let key = key::init_key(gpiob.pb1, &mut gpiob.crl, &mut exti, &mut nvic, &mut afio);
         // 初始化 LED 灯
@@ -104,17 +102,6 @@ mod app {
             Local {},
         )
     }
-
-    // /// 初始化 OLED 显示屏
-    // fn init_oled(
-    //     pb8: PB8,
-    //     pb9: PB9,
-    //     crh: &mut gpio::Cr<'B', true>,
-    // ) -> oled::OLED<'_, Pin<'B', 8, Output<OpenDrain>>, Pin<'B', 9, Output<OpenDrain>>> {
-    //     let (mut scl, mut sda) = oled::simple::init_oled(pb8, pb9, crh);
-    //     let oled = oled::OLED::new(&mut scl, &mut sda);
-    //     oled
-    // }
 
     /// 发送 MPU6050 传感器数据
     #[task(priority = 1, shared=[mpu6050,delay])]
