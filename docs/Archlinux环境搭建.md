@@ -56,6 +56,10 @@ sudo pacman -S minicom
 ## 图形化串口工具（可选）
 
 ```shell
+# 推荐
+yay -S aur/coolterm-bin
+
+# 备用
 yay -S aur/cutecom
 ```
 
