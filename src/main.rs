@@ -7,7 +7,7 @@ use stm32f103_uav::hardware::{
     led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
-    tb6612fng,
+    tb6612fng, usart,
 };
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
@@ -38,6 +38,7 @@ mod app {
         delay: SysDelay,
         key: PA11<gpio::Input<gpio::PullUp>>,
         led: PA4<gpio::Output<gpio::PushPull>>,
+        usart: usart::Usart,
         mpu6050: Mpu6050TY,
     }
 
@@ -59,6 +60,7 @@ mod app {
         let mut exti = ctx.device.EXTI;
         let spi1 = ctx.device.SPI1;
         let tim2 = ctx.device.TIM2;
+        let usart1 = ctx.device.USART1;
 
         let syst = ctx.core.SYST;
         let mut nvic = ctx.core.NVIC;
@@ -74,10 +76,24 @@ mod app {
         delay.delay_ms(1000_u16);
         println!("init start ...");
 
+        // 禁用 jtag 端口进行复用
+        let (_pa15, _pb3, _pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+
         // 初始化按键 KEY
         let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
         // 初始化 LED 灯
         let led = led::init_led(gpioa.pa4, &mut gpioa.crl);
+        // 初始化 USART1 串口
+        let usart = usart::Usart::new(
+            gpioa.pa9,
+            gpioa.pa10,
+            &mut gpioa.crh,
+            usart1,
+            &mut afio.mapr,
+            &clocks,
+            &mut nvic,
+        );
+
         // 初始化 MPU6050 传感器
         let mpu6050 = mpu6050::init(
             i2c2,
@@ -94,7 +110,7 @@ mod app {
             pa7: gpioa.pa7,
             gpioa_crl: &mut gpioa.crl,
             pa8: gpioa.pa8,
-            pa9: gpioa.pa9,
+            pa12: gpioa.pa12,
             gpioa_crh: &mut gpioa.crh,
             spi1,
             mapr: &mut afio.mapr,
@@ -102,7 +118,7 @@ mod app {
         });
         let nrf24l01_rx = nrf24l01.rx().unwrap();
         // 初始化 TB6612FNG 电机驱动
-        let tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
+        let _tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
             tim2,
             mapr: &mut afio.mapr,
             clocks: &clocks,
@@ -128,6 +144,7 @@ mod app {
                 delay,
                 key,
                 led,
+                usart,
                 mpu6050,
             },
             Local {
@@ -238,7 +255,7 @@ mod app {
     /// 开启/关闭飞控
     /// 点灯/熄灯
     #[task(binds = EXTI15_10, local = [], shared=[key,led])]
-    fn key_click(ctx: key_click::Context) {
+    fn key_click_irq(ctx: key_click_irq::Context) {
         let key = ctx.shared.key;
         let led = ctx.shared.led;
         (key, led).lock(|key, led| {
@@ -258,6 +275,17 @@ mod app {
             // 开启飞控
             enbaled_flight_control();
         });
+    }
+
+    /// USART1 串口中断
+    /// 接收数据中断
+    /// todo: 待完善指令
+    #[task(binds = USART1, local = [], shared=[usart])]
+    fn usart1_rev_irq(mut ctx: usart1_rev_irq::Context) {
+        ctx.shared.usart.lock(|usart| {
+            let cmd = usart.recv_cmd().unwrap();
+            println!("cmd: {:?}", cmd);
+        })
     }
 
     /// 任务处理

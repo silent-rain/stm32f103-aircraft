@@ -1,15 +1,15 @@
 #![no_std]
 #![no_main]
 
+pub mod config;
+pub mod hardware;
+
 use defmt_rtt as _;
 // global logger
 use panic_probe as _;
 // adjust HAL import
 // memory layout
 use stm32f1xx_hal as _;
-
-pub mod hardware;
-pub mod config;
 
 // 引脚校验
 // 备注*的引脚尽量不替换
@@ -30,7 +30,7 @@ enum _Pin {
     PA6, // *
     PA7, // *
     PA8,
-    PA9,
+    PA12,
 
     // MPU6050 传感器
     PB10, // *
@@ -43,25 +43,25 @@ enum _Pin {
     PA3, // *
     PB0,
     PB1,
+    PB3, // 复用引脚
+    PB4, // 复用引脚
     PB12,
     PB13,
     PB14,
     PB15,
-    PA10,
-    PA12,
+
+    // USART 串口
+    PA9,  // *
+    PA10, // *
 
     // 待分配的引脚
+    PB5,
+    PB6,
+    PB7,
+    PA15, // 复用引脚
 
     // 不可使用引脚, 需要重置才可使用
     PB2,
     PA13,
     PA14,
-    PA15,
-    PB3,
-    PB4,
-
-    // 不可使用引脚, 被OLED遮挡
-    PB5,
-    PB6,
-    PB7,
 }

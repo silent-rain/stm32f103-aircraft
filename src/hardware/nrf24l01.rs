@@ -7,7 +7,7 @@ use heapless::String;
 use embedded_nrf24l01::{Configuration, CrcMode, DataRate, Payload, RxMode, StandbyMode, NRF24L01};
 use stm32f1xx_hal::{
     afio::MAPR,
-    gpio::{self, Alternate, Input, OpenDrain, Output, PullUp, PA5, PA6, PA7, PA8, PA9},
+    gpio::{self, Alternate, Input, OpenDrain, Output, PullUp, PA12, PA5, PA6, PA7, PA8},
     pac::SPI1,
     prelude::_fugit_RateExtU32,
     rcc::Clocks,
@@ -19,7 +19,7 @@ pub type NRF24L01TY = StandbyMode<
     NRF24L01<
         Infallible,
         PA8<Output<OpenDrain>>,
-        PA9<Output<OpenDrain>>,
+        PA12<Output<OpenDrain>>,
         Spi<SPI1, Spi1NoRemap, (PA5<Alternate>, PA6<Input<PullUp>>, PA7<Alternate>), u8>,
     >,
 >;
@@ -29,7 +29,7 @@ pub type RxTY = RxMode<
     NRF24L01<
         Infallible,
         PA8<Output<OpenDrain>>,
-        PA9<Output<OpenDrain>>,
+        PA12<Output<OpenDrain>>,
         Spi<SPI1, Spi1NoRemap, (PA5<Alternate>, PA6<Input<PullUp>>, PA7<Alternate>), u8>,
     >,
 >;
@@ -47,7 +47,7 @@ pub struct Config<'a> {
     pub pa7: PA7,
     pub gpioa_crl: &'a mut gpio::Cr<'A', false>,
     pub pa8: PA8,
-    pub pa9: PA9,
+    pub pa12: PA12,
     pub gpioa_crh: &'a mut gpio::Cr<'A', true>,
     pub spi1: SPI1,
     pub mapr: &'a mut MAPR,
@@ -78,7 +78,7 @@ pub fn init(config: Config) -> NRF24L01TY {
     };
 
     let ce = config.pa8.into_open_drain_output(config.gpioa_crh);
-    let csn = config.pa9.into_open_drain_output(config.gpioa_crh);
+    let csn = config.pa12.into_open_drain_output(config.gpioa_crh);
 
     let mut nrf24 = NRF24L01::new(ce, csn, spi).unwrap();
 

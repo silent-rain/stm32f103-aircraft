@@ -20,6 +20,7 @@ defmt = "0.3.5"
 defmt-rtt = "0.4.0"
 panic-probe = {version = "0.3.1", features = ["print-defmt"]}
 nb = "1.1.0"
+unwrap-infallible = "0.1.5"
 heapless = "0.8.0"
 # 6轴姿态传感器
 mpu6050 = "0.1.6"
