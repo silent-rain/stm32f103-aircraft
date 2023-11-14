@@ -7,7 +7,6 @@ use stm32f103_uav::hardware::{
     led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
-    oled::{self, simple::OLEDTY},
     tb6612fng,
 };
 
@@ -39,7 +38,6 @@ mod app {
         delay: SysDelay,
         key: PA11<gpio::Input<gpio::PullUp>>,
         led: PA4<gpio::Output<gpio::PushPull>>,
-        oled: OLEDTY,
         mpu6050: Mpu6050TY,
     }
 
@@ -75,9 +73,6 @@ mod app {
 
         delay.delay_ms(1000_u16);
         println!("init start ...");
-
-        // 初始化 OLED 显示屏
-        let mut oled = oled::simple::init_oled(gpiob.pb8, gpiob.pb9, &mut gpiob.crh);
 
         // 初始化按键 KEY
         let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
@@ -127,14 +122,12 @@ mod app {
         let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
         nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
 
-        oled.show_string(1, 1, "hallo");
         println!("init end ...");
         (
             Shared {
                 delay,
                 key,
                 led,
-                oled,
                 mpu6050,
             },
             Local {
@@ -241,7 +234,7 @@ mod app {
         }
     }
 
-    /// 飞控开关按键中断
+    /// 飞控开关, 按键中断
     /// 开启/关闭飞控
     /// 点灯/熄灯
     #[task(binds = EXTI15_10, local = [], shared=[key,led])]
