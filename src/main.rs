@@ -3,7 +3,8 @@
 #![feature(type_alias_impl_trait)]
 
 use stm32f103_uav::hardware::{
-    key, led,
+    key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
+    led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
     oled::{self, simple::OLEDTY},
@@ -240,14 +241,29 @@ mod app {
         }
     }
 
-    /// 按钮中断事件触发 LED 灯
-    #[task(binds = EXTI1, local = [],shared=[key,led])]
+    /// 飞控开关按键中断
+    /// 开启/关闭飞控
+    /// 点灯/熄灯
+    #[task(binds = EXTI15_10, local = [], shared=[key,led])]
     fn key_click(ctx: key_click::Context) {
         let key = ctx.shared.key;
         let led = ctx.shared.led;
         (key, led).lock(|key, led| {
             key.clear_interrupt_pending_bit();
-            led.toggle();
+
+            // 如果是开启状态, 则关闭飞控及熄灯
+            if is_flight_control_enbaled() {
+                // 熄灯
+                led.set_high();
+                // 关闭飞控
+                disabled_flight_control();
+                return;
+            }
+
+            // 点灯
+            led.set_low();
+            // 开启飞控
+            enbaled_flight_control();
         });
     }
 
@@ -255,6 +271,13 @@ mod app {
     #[idle(local = [mpu6050_s,nrf24l01_s], shared = [delay])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
+            // 等待开启飞控
+            if !is_flight_control_enbaled() {
+                ctx.shared.delay.lock(|delay| {
+                    delay.delay_ms(1000_u16);
+                });
+                continue;
+            };
             mpu6050_sender::spawn(ctx.local.mpu6050_s.clone()).unwrap();
             nrf24l01_sender::spawn(ctx.local.nrf24l01_s.clone()).unwrap();
             println!("=======================");

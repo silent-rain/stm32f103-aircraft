@@ -5,6 +5,8 @@ use stm32f1xx_hal::{
     pac::{Interrupt, EXTI, NVIC},
 };
 
+use crate::config::FLIGHT_CONTROL_ENBALED;
+
 /// 初始化按键 KEY
 pub fn init_key(
     pa11: PA11,
@@ -20,13 +22,32 @@ pub fn init_key(
     // 从该引脚启用外部中断
     key.enable_interrupt(exti);
     // 下升沿生成中断
-    key.trigger_on_edge(exti, Edge::RisingFalling);
+    key.trigger_on_edge(exti, Edge::Falling);
 
     // 使能中断
     unsafe {
-        NVIC::unmask(Interrupt::EXTI1);
-        nvic.set_priority(Interrupt::EXTI1, 1);
+        NVIC::unmask(Interrupt::EXTI15_10);
+        nvic.set_priority(Interrupt::EXTI15_10, 1);
     }
 
     key
+}
+
+/// 飞控开关是否开启
+pub fn is_flight_control_enbaled() -> bool {
+    unsafe { FLIGHT_CONTROL_ENBALED }
+}
+
+/// 开启飞控
+pub fn enbaled_flight_control() {
+    unsafe {
+        FLIGHT_CONTROL_ENBALED = true;
+    }
+}
+
+/// 关闭飞控
+pub fn disabled_flight_control() {
+    unsafe {
+        FLIGHT_CONTROL_ENBALED = false;
+    }
 }

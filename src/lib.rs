@@ -9,6 +9,7 @@ use panic_probe as _;
 use stm32f1xx_hal as _;
 
 pub mod hardware;
+pub mod config;
 
 // 引脚校验
 // 备注*的引脚尽量不替换
