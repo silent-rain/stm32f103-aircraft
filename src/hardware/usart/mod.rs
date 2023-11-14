@@ -1,8 +1,11 @@
 //! USART1 通用串口
 #![allow(unused)]
+use core::convert::Infallible;
+
 mod utils;
 
-use core::convert::Infallible;
+use crate::config::USART1_BAUDRATE;
+pub use utils::*;
 
 use cortex_m::peripheral::NVIC;
 use heapless::String;
@@ -14,8 +17,6 @@ use stm32f1xx_hal::{
     serial::{self, Rx, Serial, StopBits, Tx},
     time::U32Ext,
 };
-
-pub use utils::*;
 
 /// USART 串口
 pub struct Usart {
@@ -44,7 +45,7 @@ impl Usart {
             (tx, rx),
             mapr,
             serial::Config::default()
-                .baudrate(9600.bps())
+                .baudrate(USART1_BAUDRATE.bps())
                 .wordlength_8bits()
                 .stopbits(StopBits::STOP1)
                 .parity_none(),

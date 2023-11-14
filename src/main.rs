@@ -4,7 +4,7 @@
 
 use stm32f103_uav::hardware::{
     key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
-    led,
+    led::Led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
     tb6612fng, usart,
@@ -19,7 +19,7 @@ use rtic_sync::{
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
-    gpio::{self, ExtiPin, PA11, PA4},
+    gpio::{self, ExtiPin, PA11},
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
@@ -37,7 +37,7 @@ mod app {
     struct Shared {
         delay: SysDelay,
         key: PA11<gpio::Input<gpio::PullUp>>,
-        led: PA4<gpio::Output<gpio::PushPull>>,
+        led: Led,
         usart: usart::Usart,
         mpu6050: Mpu6050TY,
     }
@@ -82,7 +82,7 @@ mod app {
         // 初始化按键 KEY
         let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
         // 初始化 LED 灯
-        let led = led::init_led(gpioa.pa4, &mut gpioa.crl);
+        let led = Led::new(gpioa.pa4, &mut gpioa.crl);
         // 初始化 USART1 串口
         let usart = usart::Usart::new(
             gpioa.pa9,
@@ -264,14 +264,14 @@ mod app {
             // 如果是开启状态, 则关闭飞控及熄灯
             if is_flight_control_enbaled() {
                 // 熄灯
-                led.set_high();
+                led.off();
                 // 关闭飞控
                 disabled_flight_control();
                 return;
             }
 
             // 点灯
-            led.set_low();
+            led.off();
             // 开启飞控
             enbaled_flight_control();
         });
