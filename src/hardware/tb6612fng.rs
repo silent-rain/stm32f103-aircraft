@@ -48,10 +48,11 @@ impl<'a> Tb6612fng {
         let pwma1 = config.pa1.into_alternate_push_pull(config.gpioa_crl);
         let pwma2 = config.pa2.into_alternate_push_pull(config.gpioa_crl);
         let pwma3 = config.pa3.into_alternate_push_pull(config.gpioa_crl);
+
         let mut pwm = config.tim2.pwm_hz::<Tim2NoRemap, _, _>(
             (pwma0, pwma1, pwma2, pwma3),
             config.mapr,
-            1.kHz(),
+            10.kHz(),
             config.clocks,
         );
 
