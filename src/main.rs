@@ -19,7 +19,6 @@ use rtic_sync::{
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
-    gpio::{self, ExtiPin, PA11},
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
@@ -36,7 +35,7 @@ mod app {
     #[shared]
     struct Shared {
         delay: SysDelay,
-        key: PA11<gpio::Input<gpio::PullUp>>,
+        key: key::Key,
         led: Led,
         usart: usart::Usart,
         mpu6050: Mpu6050TY,
@@ -77,10 +76,10 @@ mod app {
         println!("init start ...");
 
         // 禁用 jtag 端口进行复用
-        let (_pa15, _pb3, _pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+        let (_pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
         // 初始化按键 KEY
-        let key = key::init_key(gpioa.pa11, &mut gpioa.crh, &mut exti, &mut nvic, &mut afio);
+        let key = key::Key::new(gpiob.pb8, &mut gpiob.crh, &mut exti, &mut nvic, &mut afio);
         // 初始化 LED 灯
         let led = Led::new(gpioa.pa4, &mut gpioa.crl);
         // 初始化 USART1 串口
@@ -104,19 +103,18 @@ mod app {
             clocks,
         );
         // 初始化 NRF24L01 2.4 GHz 无线通信
-        let nrf24l01 = nrf24l01::init(nrf24l01::Config {
-            pa5: gpioa.pa5,
-            pa6: gpioa.pa6,
-            pa7: gpioa.pa7,
-            gpioa_crl: &mut gpioa.crl,
-            pa8: gpioa.pa8,
-            pa12: gpioa.pa12,
-            gpioa_crh: &mut gpioa.crh,
+        let nrf24l01 = nrf24l01::Nrf24L01::new(nrf24l01::Config {
+            spi_sck: pb3,
+            spi_miso: pb4,
+            spi_mosi: gpiob.pb5,
+            nrf24_ce: gpiob.pb6,
+            nrf24_csn: gpiob.pb7,
+            crl: &mut gpiob.crl,
             spi1,
             mapr: &mut afio.mapr,
             clocks,
         });
-        let nrf24l01_rx = nrf24l01.rx().unwrap();
+        let nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
         // 初始化 TB6612FNG 电机驱动
         let _tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
             tim2,
@@ -232,7 +230,7 @@ mod app {
         }
         // 读取数据到缓冲区
         let payload = rx.read().unwrap();
-        let data = nrf24l01::payload_string(payload);
+        let data = nrf24l01::Nrf24L01::payload_string(payload);
         let data_str = data.as_str();
         println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
 
