@@ -2,12 +2,13 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use stm32f103_uav::hardware::tb6612fng::Tb6612fng;
 use stm32f103_uav::hardware::{
     key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
     led::Led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
-    tb6612fng, usart,
+    tb6612fng, timer, usart,
 };
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
@@ -30,6 +31,7 @@ const NRF24L01_CAPACITY: usize = 1;
 // 定义应用程序资源和任务
 #[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [EXTI2,EXTI3])]
 mod app {
+
     use super::*;
 
     #[shared]
@@ -46,6 +48,7 @@ mod app {
         mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
         nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
         nrf24l01_rx: RxTY,
+        tb6612fng: Tb6612fng,
     }
 
     // 初始化函数
@@ -59,10 +62,10 @@ mod app {
         let mut exti = ctx.device.EXTI;
         let spi1 = ctx.device.SPI1;
         let tim2 = ctx.device.TIM2;
+        let tim3 = ctx.device.TIM3;
         let usart1 = ctx.device.USART1;
 
         let syst = ctx.core.SYST;
-        let mut nvic = ctx.core.NVIC;
 
         let mut gpioa = ctx.device.GPIOA.split();
         let mut gpiob = ctx.device.GPIOB.split();
@@ -79,9 +82,9 @@ mod app {
         let (_pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
         // 初始化按键 KEY
-        let key = key::Key::new(gpiob.pb8, &mut gpiob.crh, &mut exti, &mut nvic, &mut afio);
+        let key = key::Key::new(gpiob.pb0, &mut gpiob.crl, &mut exti, &mut afio);
         // 初始化 LED 灯
-        let led = Led::new(gpioa.pa4, &mut gpioa.crl);
+        let led = Led::new(gpiob.pb1, &mut gpiob.crl);
         // 初始化 USART1 串口
         let usart = usart::Usart::new(
             gpioa.pa9,
@@ -90,8 +93,9 @@ mod app {
             usart1,
             &mut afio.mapr,
             &clocks,
-            &mut nvic,
         );
+        // 初始化定时器
+        timer::init_timer(tim3, &clocks);
 
         // 初始化 MPU6050 传感器
         let mpu6050 = mpu6050::init(
@@ -102,6 +106,22 @@ mod app {
             &mut delay,
             clocks,
         );
+        // 初始化 TB6612FNG 电机驱动
+        let tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
+            pa0: gpioa.pa0,
+            pa1: gpioa.pa1,
+            pa2: gpioa.pa2,
+            pa3: gpioa.pa3,
+            pa4: gpioa.pa4,
+            pa5: gpioa.pa5,
+            pa6: gpioa.pa6,
+            pa7: gpioa.pa7,
+            crl: &mut gpioa.crl,
+            tim2,
+            mapr: &mut afio.mapr,
+            clocks: &clocks,
+        });
+
         // 初始化 NRF24L01 2.4 GHz 无线通信
         let nrf24l01 = nrf24l01::Nrf24L01::new(nrf24l01::Config {
             spi_sck: pb3,
@@ -115,18 +135,6 @@ mod app {
             clocks,
         });
         let nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
-        // 初始化 TB6612FNG 电机驱动
-        let _tb6612fng = tb6612fng::Tb6612fng::new(tb6612fng::Config {
-            tim2,
-            mapr: &mut afio.mapr,
-            clocks: &clocks,
-            pa0: gpioa.pa0,
-            pa1: gpioa.pa1,
-            pa2: gpioa.pa2,
-            pa3: gpioa.pa3,
-            gpioa_crl: &mut gpioa.crl,
-        });
-        // tb6612fng.set_duty(channel, speed);
 
         // MPU6050 传感器传递
         let (mpu6050_s, mpu6050_r) = make_channel!(Mpu6050Data, MPU6050_CAPACITY);
@@ -146,6 +154,7 @@ mod app {
                 mpu6050,
             },
             Local {
+                tb6612fng,
                 mpu6050_s: mpu6050_s.clone(),
                 nrf24l01_s: nrf24l01_s.clone(),
                 nrf24l01_rx,
@@ -252,8 +261,9 @@ mod app {
     /// 飞控开关, 按键中断
     /// 开启/关闭飞控
     /// 点灯/熄灯
-    #[task(binds = EXTI15_10, local = [], shared=[key,led])]
+    #[task(binds = EXTI9_5, priority = 2, local = [], shared=[key,led])]
     fn key_click_irq(ctx: key_click_irq::Context) {
+        println!("key_click_irq");
         let key = ctx.shared.key;
         let led = ctx.shared.led;
         (key, led).lock(|key, led| {
@@ -275,21 +285,29 @@ mod app {
         });
     }
 
-    /// USART1 串口中断
-    /// 接收数据中断
-    /// todo: 待完善指令
-    #[task(binds = USART1, local = [], shared=[usart])]
-    fn usart1_rev_irq(mut ctx: usart1_rev_irq::Context) {
+    /// TIM3 定时中断
+    /// 50ms过期中断
+    #[task(binds = TIM3, local = [tb6612fng], shared=[usart])]
+    fn timer_irq(mut ctx: timer_irq::Context) {
         ctx.shared.usart.lock(|usart| {
-            let cmd = usart.recv_cmd().unwrap();
-            println!("cmd: {:?}", cmd);
+            // 接收 USART1 串口数据
+            if usart.rx.is_rx_not_empty() {
+                if let Ok(cmd) = usart.recv_string() {
+                    let c = (cmd.as_str()).parse::<u8>().unwrap();
+                    println!("5cmd: {:?}", c);
+                    ctx.local.tb6612fng.set_all_motor(c);
+                };
+            }
         })
     }
 
     /// 任务处理
-    #[idle(local = [mpu6050_s,nrf24l01_s], shared = [delay])]
+    #[idle(local = [mpu6050_s,nrf24l01_s], shared = [delay,usart])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
+            ctx.shared.usart.lock(|usart| {
+                usart.send_byte(1).unwrap();
+            });
             // 等待开启飞控
             if !is_flight_control_enbaled() {
                 ctx.shared.delay.lock(|delay| {

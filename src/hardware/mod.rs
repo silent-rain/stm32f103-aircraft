@@ -6,3 +6,4 @@ pub mod nrf24l01;
 pub mod oled;
 pub mod tb6612fng;
 pub mod usart;
+pub mod timer;

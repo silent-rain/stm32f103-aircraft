@@ -17,9 +17,9 @@ use stm32f1xx_hal as _;
 #[allow(unused)]
 enum _Pin {
     // 按键 KEY
-    PB8,
+    PB0,
     // LED 灯
-    PB9,
+    PB1,
 
     // USART 串口
     PA9,  // *
@@ -41,23 +41,23 @@ enum _Pin {
     PA1, // *
     PA4,
     PA5,
-    PA6,
-    PA7,
     // TB6612FNG 电机驱动2
     PA2, // *
     PA3, // *
-    PA8,
-    PA11,
-    PA12,
-    PA15,
+    PA6,
+    PA7,
 
     // 待分配的引脚
-    PB0,
-    PB1,
+    PB8,
+    PB9,
     PB12,
     PB13,
     PB14,
     PB15,
+    PA8,
+    PA11,
+    PA12,
+    PA15,
 
     // 不可使用引脚, 需要重置才可使用
     PB2,
