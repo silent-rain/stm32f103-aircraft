@@ -12,14 +12,14 @@ use stm32f1xx_hal::{
 
 /// 配置
 pub struct Config<'a> {
-    pub tim2: TIM2,
-    pub mapr: &'a mut MAPR,
-    pub clocks: &'a Clocks,
     pub pa0: PA0,
     pub pa1: PA1,
     pub pa2: PA2,
     pub pa3: PA3,
     pub gpioa_crl: &'a mut gpio::Cr<'A', false>,
+    pub tim2: TIM2,
+    pub mapr: &'a mut MAPR,
+    pub clocks: &'a Clocks,
 }
 
 // pwm 类型别名

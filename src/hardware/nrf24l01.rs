@@ -2,7 +2,7 @@
 
 use core::convert::Infallible;
 
-use crate::config::{NRF24L01_RX_ADDR, NRF24L01_RX_ADDR_P0, NRF24L01_TX_ADDR};
+use crate::config::NRF24L01_TX_ADDR;
 
 use heapless::String;
 
@@ -103,9 +103,9 @@ impl Nrf24L01 {
 
         // 设置TX管道的地址
         self.nrf24.set_tx_addr(NRF24L01_TX_ADDR).unwrap();
-        self.nrf24
-            .set_rx_addr(NRF24L01_RX_ADDR_P0, NRF24L01_RX_ADDR)
-            .unwrap();
+        // self.nrf24
+        //     .set_rx_addr(NRF24L01_RX_ADDR_P0, NRF24L01_RX_ADDR)
+        //     .unwrap();
     }
 
     /// 接收数据转换为字符串
