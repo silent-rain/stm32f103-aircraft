@@ -20,8 +20,8 @@ use stm32f1xx_hal::{
 
 /// USART 串口
 pub struct Usart {
-    tx: Tx<USART1>,
-    rx: Rx<USART1>,
+    pub tx: Tx<USART1>,
+    pub rx: Rx<USART1>,
 }
 
 impl Usart {
@@ -34,30 +34,27 @@ impl Usart {
         usart1: USART1,
         mapr: &mut MAPR,
         clocks: &Clocks,
-        nvic: &mut NVIC,
     ) -> Self {
         let tx = pa9.into_alternate_push_pull(crh);
         let rx = pa10;
 
         // 设置usart设备。取得USART寄存器和tx/rx引脚的所有权。其余寄存器用于启用和配置设备。
-        let (tx, rx) = Serial::new(
+        let (mut tx, mut rx) = Serial::new(
             usart1,
             (tx, rx),
             mapr,
             serial::Config::default()
+                // 设置波特率
                 .baudrate(USART1_BAUDRATE.bps())
-                .wordlength_8bits()
+                // 设置停止位为1个位
                 .stopbits(StopBits::STOP1)
+                // 设置数据位数为8位
+                .wordlength_8bits()
+                // 禁用奇偶校验
                 .parity_none(),
             clocks,
         )
         .split();
-
-        // 使能中断
-        unsafe {
-            NVIC::unmask(Interrupt::USART1);
-            nvic.set_priority(Interrupt::USART1, 1);
-        }
 
         Usart { tx, rx }
     }
