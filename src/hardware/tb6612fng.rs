@@ -75,7 +75,7 @@ impl<'a> Tb6612fng {
         let mut tb6612fng = Tb6612fng { pwm, max_duty };
 
         // 初始化电机的运动方向
-        tb6612fng.init_motor1_direction(config.pa4, config.pa5, config.pa6, config.pa7, config.crl);
+        tb6612fng.init_motor_direction(config.pa4, config.pa5, config.pa6, config.pa7, config.crl);
         tb6612fng
     }
 
@@ -120,7 +120,7 @@ impl<'a> Tb6612fng {
     /// 由于引脚紧张, 因此仅使用一个引脚(AIN1/BIN1)控制方向，即单向
     /// 可以调整电机接线进行正反转
     #[allow(unused)]
-    pub fn init_motor1_direction(
+    pub fn init_motor_direction(
         &mut self,
         pa4: PA4,
         pa5: PA5,

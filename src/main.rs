@@ -2,13 +2,13 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use stm32f103_uav::hardware::tb6612fng::Tb6612fng;
-use stm32f103_uav::hardware::{
+use stm32f103_aircraft::hardware::{
     key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
     led::Led,
     mpu6050::{self, Mpu6050Data, Mpu6050TY},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
-    tb6612fng, timer, usart,
+    tb6612fng::{self, Tb6612fng},
+    timer, usart,
 };
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;

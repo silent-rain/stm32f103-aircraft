@@ -73,18 +73,18 @@ sudo pacman -S openocd
 
 ```shell
 # Displays the section headers
-cargo readobj --bin stm32f103-uav --release -- -s
+cargo readobj --bin stm32f103-aircraft --release -- -s
 
 # Displays the symbol table
-cargo readobj --bin stm32f103-uav --release -- -t
+cargo readobj --bin stm32f103-aircraft --release -- -t
 ```
 
 ## 检查二进制项的 linker section 的大小
 
 ```shell
 # 查看所有的 section, 调试信息
-cargo size --bin stm32f103-uav --release -- -A
+cargo size --bin stm32f103-aircraft --release -- -A
 
 # 仅查看烧录的大小
-cargo size --bin stm32f103-uav --release -- -B
+cargo size --bin stm32f103-aircraft --release -- -B
 ```
