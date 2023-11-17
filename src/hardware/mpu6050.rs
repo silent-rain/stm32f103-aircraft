@@ -112,10 +112,10 @@ mod unit_tests {
 
         // 初始化 MPU6050 传感器
         let mut mpu = init(
+            i2c2,
             gpiob.pb10,
             gpiob.pb11,
             &mut gpiob.crh,
-            i2c2,
             &mut delay,
             clocks,
         );
