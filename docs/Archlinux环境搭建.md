@@ -35,6 +35,25 @@ cargo install cargo-binutils
 cargo size --version
 ```
 
+## 安装 flip-link:
+
+```shell
+cargo install flip-link
+```
+
+## 安装 probe-run:
+
+```shell
+# make sure to install v0.2.0 or later
+cargo install probe-run
+```
+
+## 安装 cargo-generate（可选）:
+
+```shell
+cargo install cargo-generate
+```
+
 ## 安装 ARM GCC 编译环境
 
 ```shell
