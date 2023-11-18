@@ -1,5 +1,7 @@
 //! TB6612FNG 电机驱动
-//! 用于驱动直流电机
+//! 用于驱动直流电机；
+//! 左上角为电机1号, 1-4号电机顺时针方向进行排序；
+//! 1、3号电机为顺时针方向旋转，2、4号电机为逆时针方向旋转；
 
 use stm32f1xx_hal::{
     afio::MAPR,
@@ -8,6 +10,11 @@ use stm32f1xx_hal::{
     prelude::_fugit_RateExtU32,
     rcc::Clocks,
     timer::{Ch, Channel, PwmExt, PwmHz, Tim2NoRemap},
+};
+
+use crate::config::{
+    REMOTE_CONTROL_PITCH_MAX, REMOTE_CONTROL_ROLL_MAX, REMOTE_CONTROL_THROTTLE_MAX,
+    REMOTE_CONTROL_YAW_MAX,
 };
 
 /// 配置
@@ -81,39 +88,43 @@ impl<'a> Tb6612fng {
 
     /// 设置占空比
     /// channel: 设置通道, C1-C4
-    /// speed: 设置速度, 1-100
-    pub fn set_duty(&mut self, channel: Channel, speed: u8) {
-        let speed = self.max_duty as f32 / 100.0 * speed as f32;
-        self.pwm.set_duty(channel, speed as u16);
+    /// duty: 占空比
+    pub fn set_duty(&mut self, channel: Channel, duty: u16) {
+        self.pwm.set_duty(channel, duty);
+    }
+
+    /// 获取占空比
+    pub fn get_duty(&mut self, channel: Channel) -> u16 {
+        self.pwm.get_duty(channel)
     }
 
     /// 直流电机1
-    /// speed: 设置速度, 1-100
-    pub fn set_motor1(&mut self, speed: u8) {
-        self.set_duty(Channel::C1, speed);
+    /// duty: 占空比
+    pub fn set_motor1(&mut self, duty: u16) {
+        self.set_duty(Channel::C1, duty);
     }
     /// 直流电机2
-    /// speed: 设置速度, 1-100
-    pub fn set_motor2(&mut self, speed: u8) {
-        self.set_duty(Channel::C2, speed);
+    /// duty: 占空比
+    pub fn set_motor2(&mut self, duty: u16) {
+        self.set_duty(Channel::C2, duty);
     }
     /// 直流电机3
-    /// speed: 设置速度, 1-100
-    pub fn set_motor3(&mut self, speed: u8) {
-        self.set_duty(Channel::C3, speed);
+    /// duty: 占空比
+    pub fn set_motor3(&mut self, duty: u16) {
+        self.set_duty(Channel::C3, duty);
     }
     /// 直流电机4
-    /// speed: 设置速度, 1-100
-    pub fn set_motor4(&mut self, speed: u8) {
-        self.set_duty(Channel::C4, speed);
+    /// duty: 占空比
+    pub fn set_motor4(&mut self, duty: u16) {
+        self.set_duty(Channel::C4, duty);
     }
     /// 直流电机1-4
-    /// speed: 设置速度, 1-100
-    pub fn set_all_motor(&mut self, speed: u8) {
-        self.set_duty(Channel::C1, speed);
-        self.set_duty(Channel::C2, speed);
-        self.set_duty(Channel::C3, speed);
-        self.set_duty(Channel::C4, speed);
+    /// duty: 占空比
+    pub fn set_all_motor(&mut self, duty: u16) {
+        self.set_duty(Channel::C1, duty);
+        self.set_duty(Channel::C2, duty);
+        self.set_duty(Channel::C3, duty);
+        self.set_duty(Channel::C4, duty);
     }
 
     /// 初始化电机的运动方向
@@ -145,5 +156,129 @@ impl<'a> Tb6612fng {
         let mut motor4_bin1 = pa7.into_push_pull_output(crl);
         motor4_bin1.set_speed(crl, IOPinSpeed::Mhz50);
         motor4_bin1.set_high();
+    }
+}
+
+/// 电机翻转方向枚举
+pub enum Orientation {
+    /// 左右偏航
+    Yaw,
+    /// 上下俯仰
+    Pitch,
+    /// 左右横滚
+    Roll,
+    /// 上下油门
+    Throttle,
+}
+
+/// 电机翻转方向控制
+impl Tb6612fng {
+    /// 控制电机翻转-左右偏航
+    pub fn flip_yaw(&mut self, signal_value: u16) {
+        let divide = REMOTE_CONTROL_YAW_MAX / 2;
+        // 不偏航
+        if signal_value == divide {
+            return;
+        }
+
+        // 右偏航
+        if signal_value > divide {
+            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            self.set_motor1(self.max_duty / 2 + duty); // +
+            self.set_motor2(self.max_duty / 2 - duty); // -
+            self.set_motor3(self.max_duty / 2 + duty); // +
+            self.set_motor4(self.max_duty / 2 - duty); // -
+            return;
+        }
+
+        // 左偏航
+        let duty = signal_value / divide * self.max_duty;
+        self.set_motor1(self.max_duty / 2 - duty); // -
+        self.set_motor2(self.max_duty / 2 + duty); // +
+        self.set_motor3(self.max_duty / 2 - duty); // -
+        self.set_motor4(self.max_duty / 2 + duty); // +
+    }
+
+    /// 控制电机翻转-上下俯仰
+    pub fn flip_pitch(&mut self, signal_value: u16) {
+        let divide = REMOTE_CONTROL_PITCH_MAX / 2;
+        // 不俯仰
+        if signal_value == divide {
+            return;
+        }
+
+        // 下仰
+        if signal_value > divide {
+            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            self.set_motor1(self.max_duty / 2 + duty); // +
+            self.set_motor2(self.max_duty / 2 + duty); // +
+            self.set_motor3(self.max_duty / 2 - duty); // -
+            self.set_motor4(self.max_duty / 2 - duty); // -
+            return;
+        }
+
+        // 上俯
+        let duty = signal_value / divide * self.max_duty;
+        self.set_motor1(self.max_duty / 2 - duty); // -
+        self.set_motor2(self.max_duty / 2 - duty); // -
+        self.set_motor3(self.max_duty / 2 + duty); // +
+        self.set_motor4(self.max_duty / 2 + duty); // +
+    }
+
+    /// 控制电机翻转-左右横滚
+    pub fn flip_roll(&mut self, signal_value: u16) {
+        let divide = REMOTE_CONTROL_ROLL_MAX / 2;
+        // 不横滚
+        if signal_value == divide {
+            return;
+        }
+
+        // 右横滚
+        if signal_value > divide {
+            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            self.set_motor1(self.max_duty / 2 + duty); // +
+            self.set_motor2(self.max_duty / 2 - duty); // -
+            self.set_motor3(self.max_duty / 2 - duty); // -
+            self.set_motor4(self.max_duty / 2 + duty); // +
+            return;
+        }
+
+        // 左横滚
+        let duty = signal_value / divide * self.max_duty;
+        self.set_motor1(self.max_duty / 2 - duty); // -
+        self.set_motor2(self.max_duty / 2 + duty); // +
+        self.set_motor3(self.max_duty / 2 + duty); // +
+        self.set_motor4(self.max_duty / 2 - duty); // -
+    }
+
+    /// 控制电机翻转-上下油门
+    pub fn flip_throttle(&mut self, signal_value: u16) {
+        let divide = REMOTE_CONTROL_THROTTLE_MAX / 2;
+        // 不加油门
+        if signal_value == divide {
+            return;
+        }
+
+        // 上拉油门
+        if signal_value > divide {
+            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            self.set_all_motor(duty); // +
+            return;
+        }
+
+        // 下拉油门
+        let duty = signal_value / divide * self.max_duty;
+        self.set_all_motor(duty); // -
+    }
+
+    /// 控制电机翻转
+    pub fn flip(&mut self, orientation: Orientation, _signal_value: u16) {
+        // 使用match语句，匹配参数的值
+        match orientation {
+            Orientation::Yaw => {}
+            Orientation::Pitch => {}
+            Orientation::Roll => {}
+            Orientation::Throttle => {}
+        }
     }
 }

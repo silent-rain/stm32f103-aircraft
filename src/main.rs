@@ -5,7 +5,7 @@
 use stm32f103_aircraft::hardware::{
     key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
     led::Led,
-    mpu6050::{self, Mpu6050Data, Mpu6050TY},
+    mpu6050::{self, Mpu6050},
     nrf24l01::{self, NRF24L01Cmd, RxTY},
     tb6612fng::{self, Tb6612fng},
     timer, usart,
@@ -25,13 +25,11 @@ use stm32f1xx_hal::{
 };
 
 // 消息通道容量
-const MPU6050_CAPACITY: usize = 1;
 const NRF24L01_CAPACITY: usize = 1;
 
 // 定义应用程序资源和任务
 #[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [EXTI2,EXTI3])]
 mod app {
-
     use super::*;
 
     #[shared]
@@ -40,15 +38,15 @@ mod app {
         key: key::Key,
         led: Led,
         usart: usart::Usart,
-        mpu6050: Mpu6050TY,
+        tb6612fng: Tb6612fng,
     }
 
     #[local]
     struct Local {
-        mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
+        // mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
         nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
         nrf24l01_rx: RxTY,
-        tb6612fng: Tb6612fng,
+        mpu6050: Mpu6050,
     }
 
     // 初始化函数
@@ -98,7 +96,7 @@ mod app {
         timer::init_timer(tim3, &clocks);
 
         // 初始化 MPU6050 传感器
-        let mpu6050 = mpu6050::init(
+        let mpu6050 = mpu6050::Mpu6050::new(
             i2c2,
             gpiob.pb10,
             gpiob.pb11,
@@ -136,10 +134,6 @@ mod app {
         });
         let nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
 
-        // MPU6050 传感器传递
-        let (mpu6050_s, mpu6050_r) = make_channel!(Mpu6050Data, MPU6050_CAPACITY);
-        mpu6050_receiver::spawn(mpu6050_r).unwrap();
-
         // NRF24L01 数据传递
         let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
         nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
@@ -151,75 +145,14 @@ mod app {
                 key,
                 led,
                 usart,
-                mpu6050,
+                tb6612fng,
             },
             Local {
-                tb6612fng,
-                mpu6050_s: mpu6050_s.clone(),
+                mpu6050,
                 nrf24l01_s: nrf24l01_s.clone(),
                 nrf24l01_rx,
             },
         )
-    }
-
-    /// 发送 MPU6050 传感器数据
-    #[task(priority = 2, shared=[mpu6050,delay])]
-    async fn mpu6050_sender(
-        mut ctx: mpu6050_sender::Context,
-        mut sender: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
-    ) {
-        let data = ctx.shared.mpu6050.lock(|mpu6050| {
-            // 读取温度传感器的标度数据，单位为摄氏度
-            let temperature = mpu6050.get_temp().unwrap();
-
-            // 获取加速度数据，单位为g
-            let accel = mpu6050.get_acc().unwrap();
-
-            // 获取角速度数据，单位为弧度每秒
-            let gyro = mpu6050.get_gyro().unwrap();
-
-            // 读取设备的姿态角，单位为度
-            let angles = mpu6050.get_acc_angles().unwrap();
-            // 俯仰角
-            let pitch = angles[0];
-            // 横滚角
-            let roll = angles[1];
-
-            Mpu6050Data {
-                temperature,
-                accel_x: accel.x,
-                accel_y: accel.y,
-                accel_z: accel.z,
-                gyro_x: gyro.x,
-                gyro_y: gyro.y,
-                gyro_z: gyro.z,
-                pitch,
-                roll,
-            }
-        });
-        sender.send(data).await.unwrap();
-    }
-
-    /// 接收 MPU6050 通道数据
-    #[task(priority = 2)]
-    async fn mpu6050_receiver(
-        _c: mpu6050_receiver::Context,
-        mut receiver: Receiver<'static, Mpu6050Data, MPU6050_CAPACITY>,
-    ) {
-        while let Ok(val) = receiver.recv().await {
-            println!(
-                "Temperature: {}°C \nAccel: ({}, {}, {}) \nGyro: ({}, {}, {}) \nPitch: {:?}, Roll: {:?}",
-                val.temperature,
-                val.accel_x,
-                val.accel_y,
-                val.accel_z,
-                val.gyro_x,
-                val.gyro_y,
-                val.gyro_z,
-                val.pitch,
-                val.roll,
-            );
-        }
     }
 
     /// 将 NRF24L01 无线通信数据转发内部通道
@@ -261,7 +194,7 @@ mod app {
     /// 飞控开关, 按键中断
     /// 开启/关闭飞控
     /// 点灯/熄灯
-    #[task(binds = EXTI9_5, priority = 2, local = [], shared=[key,led])]
+    #[task(binds = EXTI9_5, local = [], shared=[key,led])]
     fn key_click_irq(ctx: key_click_irq::Context) {
         println!("key_click_irq");
         let key = ctx.shared.key;
@@ -287,22 +220,43 @@ mod app {
 
     /// TIM3 定时中断
     /// 50ms过期中断
-    #[task(binds = TIM3, local = [tb6612fng], shared=[usart])]
-    fn timer_irq(mut ctx: timer_irq::Context) {
-        ctx.shared.usart.lock(|usart| {
+    #[task(binds = TIM3, local = [mpu6050], shared=[usart,tb6612fng])]
+    fn timer_irq(ctx: timer_irq::Context) {
+        // 获取姿态角
+        let _angle = ctx.local.mpu6050.attitude_angle();
+
+        // USART1 串口指令
+        usart_cmd::spawn().unwrap();
+    }
+
+    /// USART1 串口指令
+    #[task(priority = 1, local = [], shared=[usart,tb6612fng])]
+    async fn usart_cmd(ctx: usart_cmd::Context) {
+        let tb6612fng = ctx.shared.tb6612fng;
+        let usart = ctx.shared.usart;
+
+        (usart, tb6612fng).lock(|usart, tb6612fng| {
             // 接收 USART1 串口数据
-            if usart.rx.is_rx_not_empty() {
-                if let Ok(cmd) = usart.recv_string() {
-                    let c = (cmd.as_str()).parse::<u8>().unwrap();
-                    println!("5cmd: {:?}", c);
-                    ctx.local.tb6612fng.set_all_motor(c);
-                };
+            if !usart.rx.is_rx_not_empty() {
+                return;
             }
-        })
+
+            let usart_resp = usart.recv_string();
+            let cmd = match usart_resp {
+                Ok(ref v) => v.as_str(),
+                Err(_err) => return,
+            };
+            let signal_value = cmd.parse::<u16>().unwrap();
+            println!("signal_value: {:?}", signal_value);
+
+            // PID 算法
+            // let pid_signal_value = pitch_controller.compute(pitch);
+            tb6612fng.flip_throttle(signal_value);
+        });
     }
 
     /// 任务处理
-    #[idle(local = [mpu6050_s,nrf24l01_s], shared = [delay,usart])]
+    #[idle(local = [nrf24l01_s], shared = [delay,usart])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
             ctx.shared.usart.lock(|usart| {
@@ -315,7 +269,6 @@ mod app {
                 });
                 continue;
             };
-            mpu6050_sender::spawn(ctx.local.mpu6050_s.clone()).unwrap();
             nrf24l01_sender::spawn(ctx.local.nrf24l01_s.clone()).unwrap();
             println!("=======================");
             ctx.shared.delay.lock(|delay| {

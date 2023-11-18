@@ -4,6 +4,7 @@ pub mod led;
 pub mod mpu6050;
 pub mod nrf24l01;
 pub mod oled;
+pub mod pid;
 pub mod tb6612fng;
-pub mod usart;
 pub mod timer;
+pub mod usart;
