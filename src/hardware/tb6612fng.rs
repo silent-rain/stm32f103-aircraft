@@ -2,6 +2,12 @@
 //! 用于驱动直流电机；
 //! 左上角为电机1号, 1-4号电机顺时针方向进行排序；
 //! 1、3号电机为顺时针方向旋转，2、4号电机为逆时针方向旋转；
+//!
+//! max_duty 是 PWM 信号的最大占空比，它表示 PWM 信号的高电平时间占总时间的最大比例，单位是 u16（无符号 16 位整数）。
+//!
+//! max_duty / 2 的意思是将 PWM 信号的占空比设置为最大占空比的一半，也就是 PWM 信号的高电平时间占总时间的一半。
+//! 这样做的目的是为了使飞行器的各个电机的转速保持在一个中等水平，从而使飞行器的飞行状态保持在一个平衡状态。
+//!
 
 use stm32f1xx_hal::{
     afio::MAPR,
@@ -173,6 +179,12 @@ pub enum Orientation {
 
 /// 电机翻转方向控制
 impl Tb6612fng {
+    /// 计算占空比
+    fn compute_duty(&self, signal_value: u16, divide: u16) -> u16 {
+        let duty = signal_value as f32 / divide as f32 * self.max_duty as f32;
+        duty as u16
+    }
+
     /// 控制电机翻转-左右偏航
     pub fn flip_yaw(&mut self, signal_value: u16) {
         let divide = REMOTE_CONTROL_YAW_MAX / 2;
@@ -183,7 +195,7 @@ impl Tb6612fng {
 
         // 右偏航
         if signal_value > divide {
-            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            let duty = self.compute_duty(signal_value - divide, divide);
             self.set_motor1(self.max_duty / 2 + duty); // +
             self.set_motor2(self.max_duty / 2 - duty); // -
             self.set_motor3(self.max_duty / 2 + duty); // +
@@ -192,7 +204,7 @@ impl Tb6612fng {
         }
 
         // 左偏航
-        let duty = signal_value / divide * self.max_duty;
+        let duty = self.compute_duty(signal_value, divide);
         self.set_motor1(self.max_duty / 2 - duty); // -
         self.set_motor2(self.max_duty / 2 + duty); // +
         self.set_motor3(self.max_duty / 2 - duty); // -
@@ -209,7 +221,7 @@ impl Tb6612fng {
 
         // 下仰
         if signal_value > divide {
-            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            let duty = self.compute_duty(signal_value - divide, divide);
             self.set_motor1(self.max_duty / 2 + duty); // +
             self.set_motor2(self.max_duty / 2 + duty); // +
             self.set_motor3(self.max_duty / 2 - duty); // -
@@ -218,7 +230,7 @@ impl Tb6612fng {
         }
 
         // 上俯
-        let duty = signal_value / divide * self.max_duty;
+        let duty = self.compute_duty(signal_value, divide);
         self.set_motor1(self.max_duty / 2 - duty); // -
         self.set_motor2(self.max_duty / 2 - duty); // -
         self.set_motor3(self.max_duty / 2 + duty); // +
@@ -235,7 +247,7 @@ impl Tb6612fng {
 
         // 右横滚
         if signal_value > divide {
-            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            let duty = self.compute_duty(signal_value - divide, divide);
             self.set_motor1(self.max_duty / 2 + duty); // +
             self.set_motor2(self.max_duty / 2 - duty); // -
             self.set_motor3(self.max_duty / 2 - duty); // -
@@ -244,7 +256,7 @@ impl Tb6612fng {
         }
 
         // 左横滚
-        let duty = signal_value / divide * self.max_duty;
+        let duty = self.compute_duty(signal_value, divide);
         self.set_motor1(self.max_duty / 2 - duty); // -
         self.set_motor2(self.max_duty / 2 + duty); // +
         self.set_motor3(self.max_duty / 2 + duty); // +
@@ -261,13 +273,13 @@ impl Tb6612fng {
 
         // 上拉油门
         if signal_value > divide {
-            let duty = signal_value / (signal_value - divide) * self.max_duty;
+            let duty = self.compute_duty(signal_value - divide, divide);
             self.set_all_motor(duty); // +
             return;
         }
 
         // 下拉油门
-        let duty = signal_value / divide * self.max_duty;
+        let duty = self.compute_duty(signal_value, divide);
         self.set_all_motor(duty); // -
     }
 
