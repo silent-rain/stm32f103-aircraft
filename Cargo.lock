@@ -624,6 +624,7 @@ dependencies = [
  "embedded-hal",
  "embedded-nrf24l01",
  "heapless 0.8.0",
+ "libm",
  "mpu6050",
  "nb 1.1.0",
  "panic-probe",
