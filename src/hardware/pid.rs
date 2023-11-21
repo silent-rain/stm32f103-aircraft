@@ -113,13 +113,33 @@ impl MotorPidController {
     /// todo: 待完善
     pub fn compute(&mut self, angle: AttitudeAngle) -> MotorPidOutput {
         // 计算 pitch 的误差和输出
-        let pitch = self.pitch_controller.compute(1.0, angle.pitch);
+        let mut pitch = self.pitch_controller.compute(1.0, angle.pitch);
 
         // 计算 yaw 的误差和输出
-        let yaw = self.yaw_controller.compute(1.0, angle.yaw);
+        let mut yaw = self.yaw_controller.compute(1.0, angle.yaw);
 
         // 计算 roll 的误差和输出
-        let roll = self.roll_controller.compute(1.0, angle.roll);
+        let mut roll = self.roll_controller.compute(1.0, angle.roll);
+
+        // 进行范围限定
+        if pitch > 90.0 {
+            pitch = 90.0
+        }
+        if pitch < -90.0 {
+            pitch = -90.0
+        }
+        if roll > 180.0 {
+            roll = 180.0;
+        }
+        if roll < -180.0 {
+            roll = -180.0;
+        }
+        if yaw > 180.0 {
+            yaw = 180.0;
+        }
+        if yaw < -180.0 {
+            yaw = -180.0;
+        }
         MotorPidOutput { pitch, yaw, roll }
     }
 }
