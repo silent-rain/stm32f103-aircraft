@@ -5,14 +5,9 @@
 //! 用于实现运动控制、姿态估计、手势识别等功能。
 //! 它也可以通过 I2C 接口与微控制器连接，通过寄存器操作和数据读取。
 //!
-//! max_duty 是 PWM 信号的最大占空比，它表示 PWM 信号的高电平时间占总时间的最大比例，单位是 u16（无符号 16 位整数）。
-//!
-//! max_duty / 2 的意思是将 PWM 信号的占空比设置为最大占空比的一半，也就是 PWM 信号的高电平时间占总时间的一半。
-//! 这样做的目的是为了使飞行器的各个电机的转速保持在一个中等水平，从而使飞行器的飞行状态保持在一个平衡状态。
-//!
 
+use libm::{atan, powf, sqrtf};
 use mpu6050::device::{AccelRange, GyroRange, ACCEL_HPF, CLKSEL};
-// pub use mpu6050::Mpu6050;
 use stm32f1xx_hal::{
     gpio::{self, Alternate, OpenDrain, PB10, PB11},
     i2c::{self, BlockingI2c, DutyCycle},
@@ -23,14 +18,19 @@ use stm32f1xx_hal::{
 };
 
 // 数据采样的时间间隔，假设为10ms
-const DT: f32 = 0.01;
+const DELTA_T: f32 = 0.01;
+
+// 偏航角
+static mut LAST_YAW: f32 = 0.0;
+// 用于存储零点偏移量，初始值为 0
+static mut OFFSET: f32 = 0.0;
 
 /// Mpu6050 对象别名
 pub type Mpu6050TY =
     mpu6050::Mpu6050<BlockingI2c<I2C2, (PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>)>>;
 
 /// 姿态角
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct AttitudeAngle {
     /// 俯仰角
     pub pitch: f32,
@@ -108,23 +108,119 @@ impl Mpu6050 {
         // 设置加速度计灵敏度
         // 设置为 ±16g
         self.mpu.set_accel_range(AccelRange::G16).unwrap();
+
+        // 陀螺仪的零点偏移量
+        self.gyroscope_zero_offset();
     }
 }
 
 impl Mpu6050 {
     /// 获取姿态角
+    /// 将弧度乘以 57.3 来转换为角度；
     pub fn attitude_angle(&mut self) -> AttitudeAngle {
-        // 获取角速度数据，单位为弧度每秒
+        // 获取角速度数据，单位为度每秒
         let gyro = self.mpu.get_gyro().unwrap();
-        // 读取设备的姿态角，单位为度
+        // 读取设备的姿态角，单位为弧度
         let angles = self.mpu.get_acc_angles().unwrap();
         // 俯仰角
         let pitch = angles[0];
         // 横滚角
         let roll = angles[1];
         // 偏航角
-        let yaw = gyro.z * DT;
+        // 粗暴的 yaw 算法, 该算法不够精准
+        let yaw = gyro.z * DELTA_T;
         AttitudeAngle { pitch, roll, yaw }
+    }
+
+    /// Get roll and pitch and yaw estimate from accelerometer data
+    /// 单位为角度
+    ///
+    /// pitch、roll、yaw 是一种描述物体或者运动方向的欧拉角（Euler angles），
+    /// 它们通常用于描述三维空间中的旋转。具体来说：
+    /// yaw，也称作偏航角，是绕着垂直于物体的方向（通常是 Z 轴）旋转的角度，范围一般为 -180° 到 180°。
+    /// pitch，也称作俯仰角，是绕着物体的横向轴（通常是 X 轴）旋转的角度，范围一般为 -90° 到 90°。
+    /// roll，也称作翻滚角，是绕着物体的纵向轴（通常是 Y 轴）旋转的角度，范围一般为 -180° 到 180°。
+    pub fn get_acc_angles(&mut self) -> AttitudeAngle {
+        // 获取加速度数据，单位为g
+        let acc = self.mpu.get_acc().unwrap();
+
+        let pitch = atan((acc.x / sqrtf(powf(acc.y, 2.) + powf(acc.z, 2.))) as f64) * 57.3;
+        let roll = atan((acc.y / sqrtf(powf(acc.x, 2.) + powf(acc.z, 2.))) as f64) * 57.3;
+        let yaw = self.get_yaw();
+
+        // 将弧度转换为角度
+        let mut pitch = pitch.to_degrees();
+        let mut roll = roll.to_degrees();
+        let mut yaw = yaw.to_degrees();
+        // 打印或显示姿态角数据
+        // println!("Pitch: {:.2}°", pitch);
+        // println!("Roll: {:.2}°", roll);
+        // println!("Yaw: {:.2}°", yaw);
+        // 进行范围限定
+        if pitch > 90.0 {
+            pitch = 90.0
+        }
+        if pitch < -90.0 {
+            pitch = -90.0
+        }
+        if roll > 180.0 {
+            roll = 180.0;
+        }
+        if roll < -180.0 {
+            roll = -180.0;
+        }
+        if yaw > 180.0 {
+            yaw = 180.0;
+        }
+        if yaw < -180.0 {
+            yaw = -180.0;
+        }
+        AttitudeAngle {
+            pitch: pitch as f32,
+            roll: roll as f32,
+            yaw,
+        }
+    }
+
+    /// 陀螺仪的零点偏移量
+
+    fn gyroscope_zero_offset(&mut self) {
+        // 用于存储读取陀螺仪数据的次数，根据你的实际情况进行调整
+        let mut count = 0;
+        // 用于存储读取陀螺仪数据的总和，初始值为 0
+        let mut sum = 0.0;
+
+        // 在传感器静止的时候，循环读取陀螺仪数据，直到达到指定的次数
+        while count < 1000 {
+            // 获取陀螺仪的数据
+            let gyro = self.mpu.get_gyro().unwrap();
+            // 将 z 轴上的角速度累加到总和上
+            sum += gyro.z;
+            // 将读取次数加一
+            count += 1;
+        }
+
+        unsafe {
+            // 计算平均值，作为零点偏移量
+            OFFSET = sum / count as f32;
+        }
+    }
+
+    /// 获取偏航角
+    fn get_yaw(&mut self) -> f32 {
+        // 获取陀螺仪的数据
+        let gyro = self.mpu.get_gyro().unwrap();
+        unsafe {
+            // 在校准完成后，正常读取陀螺仪数据，并减去零点偏移量，得到校准后的数据
+            let gyro_z = gyro.z - OFFSET;
+            // 接着，对陀螺仪的数据进行积分，乘以采样周期，
+            // 然后累加到上一次的 yaw 角上，得到新的 yaw 角
+            let yaw = LAST_YAW + gyro_z * DELTA_T;
+            // 最后，更新上一次的 yaw 角，用于下一次的计算
+            LAST_YAW = yaw;
+        }
+
+        unsafe { LAST_YAW }
     }
 }
 
@@ -176,11 +272,11 @@ mod unit_tests {
         let acc = mpu.mpu.get_acc().unwrap();
         println!("Accel: ({}, {}, {})", acc.x, acc.y, acc.z);
 
-        // 获取角速度数据，单位为弧度每秒
+        // 获取角速度数据，单位为度每秒
         let gyro = mpu.mpu.get_gyro().unwrap();
         println!("Gyro: ({}, {}, {})", gyro.x, gyro.y, gyro.z);
 
-        // 读取设备的姿态角，单位为度
+        // 读取设备的姿态角，单位为弧度
         let angles = mpu.mpu.get_acc_angles().unwrap();
         let pitch = angles[0]; // 俯仰角
         let roll = angles[1]; // 横滚角
