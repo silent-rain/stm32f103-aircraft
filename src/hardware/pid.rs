@@ -84,9 +84,9 @@ pub struct MotorPidController {
 
 /// 电机 PID 算法输出的转速
 pub struct MotorPidOutput {
-    pitch: f32,
-    yaw: f32,
-    roll: f32,
+    pub pitch: f32,
+    pub yaw: f32,
+    pub roll: f32,
 }
 
 impl MotorPidController {
