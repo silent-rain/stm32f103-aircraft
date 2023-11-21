@@ -5,27 +5,21 @@
 use stm32f103_aircraft::hardware::{
     key::{self, disabled_flight_control, enbaled_flight_control, is_flight_control_enbaled},
     led::Led,
-    mpu6050::{self, Mpu6050},
-    nrf24l01::{self, NRF24L01Cmd, RxTY},
+    mpu6050::{self, AttitudeAngle, Mpu6050},
+    nrf24l01::{self},
+    pid::MotorPidController,
     tb6612fng::{self, Tb6612fng},
     timer, usart,
 };
 
 use cortex_m::prelude::_embedded_hal_blocking_delay_DelayMs;
 use defmt::println;
-use rtic_sync::{
-    channel::{Receiver, Sender},
-    make_channel,
-};
 use stm32f1xx_hal::{
     afio::AfioExt,
     flash::FlashExt,
     prelude::{_stm32_hal_gpio_GpioExt, _stm32_hal_rcc_RccExt},
     timer::{SysDelay, SysTimerExt},
 };
-
-// 消息通道容量
-const NRF24L01_CAPACITY: usize = 1;
 
 // 定义应用程序资源和任务
 #[rtic::app(device = stm32f1xx_hal::pac, peripherals = true,dispatchers = [EXTI2,EXTI3])]
@@ -39,13 +33,14 @@ mod app {
         led: Led,
         usart: usart::Usart,
         tb6612fng: Tb6612fng,
+        pid_controller: MotorPidController,
     }
 
     #[local]
     struct Local {
         // mpu6050_s: Sender<'static, Mpu6050Data, MPU6050_CAPACITY>,
-        nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-        nrf24l01_rx: RxTY,
+        // nrf24l01_s: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+        // nrf24l01_rx: RxTY,
         mpu6050: Mpu6050,
     }
 
@@ -119,6 +114,8 @@ mod app {
             mapr: &mut afio.mapr,
             clocks: &clocks,
         });
+        // 初始化电机 PID 姿态计算模块
+        let pid_controller = MotorPidController::new();
 
         // 初始化 NRF24L01 2.4 GHz 无线通信
         let nrf24l01 = nrf24l01::Nrf24L01::new(nrf24l01::Config {
@@ -132,11 +129,11 @@ mod app {
             mapr: &mut afio.mapr,
             clocks,
         });
-        let nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
+        let _nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
 
         // NRF24L01 数据传递
-        let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
-        nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
+        // let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
+        // nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
 
         println!("init end ...");
         (
@@ -146,50 +143,47 @@ mod app {
                 led,
                 usart,
                 tb6612fng,
+                pid_controller,
             },
-            Local {
-                mpu6050,
-                nrf24l01_s: nrf24l01_s.clone(),
-                nrf24l01_rx,
-            },
+            Local { mpu6050 },
         )
     }
 
-    /// 将 NRF24L01 无线通信数据转发内部通道
-    #[task(priority = 2, local=[nrf24l01_rx], shared=[delay])]
-    async fn nrf24l01_sender(
-        mut ctx: nrf24l01_sender::Context,
-        mut sender: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-    ) {
-        println!("wait nrf24l01 signal...");
-        let rx = ctx.local.nrf24l01_rx;
-        // 检查是否有数据可读
-        if rx.can_read().unwrap().is_none() {
-            ctx.shared.delay.lock(|delay| {
-                delay.delay_ms(1000_u16);
-            });
-            return;
-        }
-        // 读取数据到缓冲区
-        let payload = rx.read().unwrap();
-        let data = nrf24l01::Nrf24L01::payload_string(payload);
-        let data_str = data.as_str();
-        println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
+    // /// 将 NRF24L01 无线通信数据转发内部通道
+    // #[task(priority = 1, local=[nrf24l01_rx], shared=[delay])]
+    // async fn nrf24l01_sender(
+    //     mut ctx: nrf24l01_sender::Context,
+    //     mut sender: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+    // ) {
+    //     println!("wait nrf24l01 signal...");
+    //     let rx = ctx.local.nrf24l01_rx;
+    //     // 检查是否有数据可读
+    //     if rx.can_read().unwrap().is_none() {
+    //         ctx.shared.delay.lock(|delay| {
+    //             delay.delay_ms(1000_u16);
+    //         });
+    //         return;
+    //     }
+    //     // 读取数据到缓冲区
+    //     let payload = rx.read().unwrap();
+    //     let data = nrf24l01::Nrf24L01::payload_string(payload);
+    //     let data_str = data.as_str();
+    //     println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
 
-        // todo: 待完善具体接收指令，可考虑cmd使用枚举 cmd&data
-        sender.send(NRF24L01Cmd { cmd: 1 }).await.unwrap();
-    }
+    //     // todo: 待完善具体接收指令，可考虑cmd使用枚举 cmd&data
+    //     sender.send(NRF24L01Cmd { cmd: 1 }).await.unwrap();
+    // }
 
-    /// 接收 NRF24L01 通道数据
-    #[task(priority = 2)]
-    async fn nrf24l01_receiver(
-        _c: nrf24l01_receiver::Context,
-        mut receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-    ) {
-        while let Ok(val) = receiver.recv().await {
-            println!("nrf24l01_receiver: {:?}", val.cmd);
-        }
-    }
+    // /// 接收 NRF24L01 通道数据
+    // #[task(priority = 1)]
+    // async fn nrf24l01_receiver(
+    //     _c: nrf24l01_receiver::Context,
+    //     mut receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
+    // ) {
+    //     while let Ok(val) = receiver.recv().await {
+    //         println!("nrf24l01_receiver: {:?}", val.cmd);
+    //     }
+    // }
 
     /// 飞控开关, 按键中断
     /// 开启/关闭飞控
@@ -223,40 +217,47 @@ mod app {
     #[task(binds = TIM3, local = [mpu6050], shared=[usart,tb6612fng])]
     fn timer_irq(ctx: timer_irq::Context) {
         // 获取姿态角
-        let _angle = ctx.local.mpu6050.attitude_angle();
+        let angle = ctx.local.mpu6050.attitude_angle();
 
         // USART1 串口指令
-        usart_cmd::spawn().unwrap();
+        usart_cmd::spawn(angle).unwrap();
     }
 
     /// USART1 串口指令
-    #[task(priority = 1, local = [], shared=[usart,tb6612fng])]
-    async fn usart_cmd(ctx: usart_cmd::Context) {
+    #[task(priority = 1, shared=[usart,tb6612fng,pid_controller])]
+    async fn usart_cmd(ctx: usart_cmd::Context, angle: AttitudeAngle) {
         let tb6612fng = ctx.shared.tb6612fng;
         let usart = ctx.shared.usart;
-
-        (usart, tb6612fng).lock(|usart, tb6612fng| {
+        let pid_controller = ctx.shared.pid_controller;
+        (usart, tb6612fng, pid_controller).lock(|usart, tb6612fng, pid_controller| {
             // 接收 USART1 串口数据
-            if !usart.rx.is_rx_not_empty() {
-                return;
-            }
-
             let usart_resp = usart.recv_string();
-            let cmd = match usart_resp {
-                Ok(ref v) => v.as_str(),
+            let signal_value = match usart_resp {
+                Ok(v) => v,
                 Err(_err) => return,
             };
-            let signal_value = cmd.parse::<u16>().unwrap();
+            if signal_value.is_empty() {
+                return;
+            }
+            // set 1=50 or get 1
+            // let cmd_value: &[&str] = signal_value.split(' ').into_iter().collect();
+            // let cmd = cmd_value;
+
+            let signal_value = signal_value.parse::<u16>().unwrap();
             println!("signal_value: {:?}", signal_value);
 
             // PID 算法
-            // let pid_signal_value = pitch_controller.compute(pitch);
+            let pid_signal_value = pid_controller.compute(angle);
+            println!("pitch: {:?} {:?}", angle.pitch, pid_signal_value.pitch);
+            println!("roll: {:?} {:?}", angle.roll, pid_signal_value.roll);
+            println!("yaw: {:?} {:?}", angle.yaw, pid_signal_value.yaw);
+
             tb6612fng.flip_throttle(signal_value);
         });
     }
 
     /// 任务处理
-    #[idle(local = [nrf24l01_s], shared = [delay,usart])]
+    #[idle(local = [], shared = [delay,usart])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
             ctx.shared.usart.lock(|usart| {
@@ -269,7 +270,7 @@ mod app {
                 });
                 continue;
             };
-            nrf24l01_sender::spawn(ctx.local.nrf24l01_s.clone()).unwrap();
+            // nrf24l01_sender::spawn(ctx.local.nrf24l01_s.clone()).unwrap();
             println!("=======================");
             ctx.shared.delay.lock(|delay| {
                 delay.delay_ms(1000_u16);
