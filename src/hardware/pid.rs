@@ -16,6 +16,9 @@ use crate::config::{PID_KD, PID_KI, PID_KP};
 
 use super::mpu6050::AttitudeAngle;
 
+// 数据采样的时间间隔，假设为10ms
+const DELTA_T: f32 = 0.01;
+
 /// PID 控制器的结构体
 pub struct PidController {
     /// 比例系数
@@ -24,8 +27,6 @@ pub struct PidController {
     pub ki: f32,
     /// 微分系数
     pub kd: f32,
-    /// 误差
-    pub error: f32,
     /// 积分
     pub integral: f32,
     /// 微分
@@ -43,7 +44,6 @@ impl PidController {
             kp,
             ki,
             kd,
-            error: 0.0,
             integral: 0.0,
             derivative: 0.0,
             last_error: 0.0,
@@ -56,22 +56,23 @@ impl PidController {
     /// input: 飞行器当前的倾角
     pub fn compute(&mut self, setpoint: f32, input: f32) -> f32 {
         // 计算误差
-        self.error = setpoint - input;
+        let error = setpoint - input;
+        // 计算比例项
+        let pout = self.kp * error;
 
-        // 计算积分
-        self.integral += self.error;
+        // 计算积分项
+        self.integral += error * DELTA_T;
+        let iout = self.ki * self.integral;
 
-        // 计算微分
-        self.derivative = self.error - self.last_error;
+        // 计算微分项
+        let derivative = (error - self.last_error) / DELTA_T;
+        let dout = self.kd * derivative;
 
-        // 计算输出
-        let output = self.kp * self.error + self.ki * self.integral + self.kd * self.derivative;
+        // 更新上一次误差
+        self.last_error = error;
 
-        // 更新上一次的误差
-        self.last_error = self.error;
-
-        // 返回输出
-        output
+        // 计算总输出
+        pout + iout + dout
     }
 }
 
