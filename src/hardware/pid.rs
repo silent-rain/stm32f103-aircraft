@@ -110,7 +110,6 @@ impl MotorPidController {
     }
 
     /// 计算姿态角的误差输出
-    /// todo: 待完善
     pub fn compute(&mut self, angle: AttitudeAngle) -> MotorPidOutput {
         // 计算 pitch 的误差和输出
         let mut pitch = self.pitch_controller.compute(1.0, angle.pitch);
