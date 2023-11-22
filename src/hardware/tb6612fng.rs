@@ -8,6 +8,15 @@
 //! max_duty / 2 的意思是将 PWM 信号的占空比设置为最大占空比的一半，也就是 PWM 信号的高电平时间占总时间的一半。
 //! 这样做的目的是为了使飞行器的各个电机的转速保持在一个中等水平，从而使飞行器的飞行状态保持在一个平衡状态。
 //!
+//! 向上升，您需要同时增加所有电机和桨叶的转速，使升力大于重力。
+//! 向下降，您需要同时减少所有电机和桨叶的转速，使升力小于重力。
+//! 向左转头，您需要增加1、3号电机和桨叶的转速，减少2、4号电机和桨叶的转速，使反扭力产生一个左旋的力矩。
+//! 向右转头，您需要增加2、4号电机和桨叶的转速，减少1、3号电机和桨叶的转速，使反扭力产生一个右旋的力矩。
+//! 向前平移，您需要增加1号电机和桨叶的转速，减少3号电机和桨叶的转速，使升力产生一个向前的力。
+//! 向后平移，您需要增加3号电机和桨叶的转速，减少1号电机和桨叶的转速，使升力产生一个向后的力。
+//! 向右平移，您需要增加2号电机和桨叶的转速，减少4号电机和桨叶的转速，使升力产生一个向右的力。
+//! 向左平移，您需要增加4号电机和桨叶的转速，减少2号电机和桨叶的转速，使升力产生一个向左的力。
+//!
 
 use stm32f1xx_hal::{
     afio::MAPR,
@@ -266,21 +275,13 @@ impl Tb6612fng {
     /// 控制电机翻转-上下油门
     pub fn flip_throttle(&mut self, signal_value: u16) {
         let divide = REMOTE_CONTROL_THROTTLE_MAX / 2;
-        // 不加油门
+        // 悬停
         if signal_value == divide {
             return;
         }
 
-        // 上拉油门
-        if signal_value > divide {
-            let duty = self.compute_duty(signal_value - divide, divide);
-            self.set_all_motor(duty); // +
-            return;
-        }
-
-        // 下拉油门
-        let duty = self.compute_duty(signal_value, divide);
-        self.set_all_motor(duty); // -
+        let duty = self.compute_duty(signal_value, REMOTE_CONTROL_THROTTLE_MAX);
+        self.set_all_motor(duty);
     }
 
     /// 控制电机翻转
