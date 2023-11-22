@@ -131,10 +131,6 @@ mod app {
         });
         let _nrf24l01_rx = nrf24l01.nrf24.rx().unwrap();
 
-        // NRF24L01 数据传递
-        // let (nrf24l01_s, nrf24l01_r) = make_channel!(NRF24L01Cmd, NRF24L01_CAPACITY);
-        // nrf24l01_receiver::spawn(nrf24l01_r).unwrap();
-
         println!("init end ...");
         (
             Shared {
@@ -148,42 +144,6 @@ mod app {
             Local { mpu6050 },
         )
     }
-
-    // /// 将 NRF24L01 无线通信数据转发内部通道
-    // #[task(priority = 1, local=[nrf24l01_rx], shared=[delay])]
-    // async fn nrf24l01_sender(
-    //     mut ctx: nrf24l01_sender::Context,
-    //     mut sender: Sender<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-    // ) {
-    //     println!("wait nrf24l01 signal...");
-    //     let rx = ctx.local.nrf24l01_rx;
-    //     // 检查是否有数据可读
-    //     if rx.can_read().unwrap().is_none() {
-    //         ctx.shared.delay.lock(|delay| {
-    //             delay.delay_ms(1000_u16);
-    //         });
-    //         return;
-    //     }
-    //     // 读取数据到缓冲区
-    //     let payload = rx.read().unwrap();
-    //     let data = nrf24l01::Nrf24L01::payload_string(payload);
-    //     let data_str = data.as_str();
-    //     println!("NRF24L01: len: {} data: {:#?}", data.len(), data_str);
-
-    //     // todo: 待完善具体接收指令，可考虑cmd使用枚举 cmd&data
-    //     sender.send(NRF24L01Cmd { cmd: 1 }).await.unwrap();
-    // }
-
-    // /// 接收 NRF24L01 通道数据
-    // #[task(priority = 1)]
-    // async fn nrf24l01_receiver(
-    //     _c: nrf24l01_receiver::Context,
-    //     mut receiver: Receiver<'static, NRF24L01Cmd, NRF24L01_CAPACITY>,
-    // ) {
-    //     while let Ok(val) = receiver.recv().await {
-    //         println!("nrf24l01_receiver: {:?}", val.cmd);
-    //     }
-    // }
 
     /// 飞控开关, 按键中断
     /// 开启/关闭飞控
@@ -217,7 +177,7 @@ mod app {
     #[task(binds = TIM3, local = [mpu6050], shared=[usart,tb6612fng])]
     fn timer_irq(ctx: timer_irq::Context) {
         // 获取姿态角
-        let angle = ctx.local.mpu6050.attitude_angle();
+        let angle = ctx.local.mpu6050.get_acc_angles();
 
         // USART1 串口指令
         usart_cmd::spawn(angle).unwrap();
